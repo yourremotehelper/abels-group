@@ -35,13 +35,6 @@
 
 <script type="module">
   import { login, getPerfil } from "./js/auth.js";
-  import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
-  import { auth } from "./js/firebase-config.js";
-
-  // si ya hay sesión iniciada, saltar directo al selector de obras
-  onAuthStateChanged(auth, (user) => {
-    if (user) window.location.href = "dashboard.html";
-  });
 
   const form = document.getElementById("loginForm");
   const errorMsg = document.getElementById("errorMsg");
