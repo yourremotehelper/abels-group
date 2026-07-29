@@ -1,0 +1,9 @@
+{
+  "name": "Abel's - Gestión de obras",
+  "short_name": "Abel's",
+  "start_url": "index.html",
+  "display": "standalone",
+  "background_color": "#F7F5F2",
+  "theme_color": "#D85A30",
+  "icons": []
+}

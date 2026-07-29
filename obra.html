@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Abel's | Obra</title>
+<link rel="manifest" href="manifest.json">
+<link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+<div class="screen">
+  <div class="topbar">
+    <button class="icon-btn" id="backBtn" title="Cambiar de obra" aria-label="Volver al selector de obras">&#8592;</button>
+    <div class="topbar-info">
+      <p class="topbar-obra">Obra</p>
+      <p class="topbar-title" id="obraTitle">Cargando...</p>
+    </div>
+    <button class="icon-btn" id="logoutBtn" title="Salir" aria-label="Cerrar sesión">&#8594;</button>
+  </div>
+
+  <div class="tabs">
+    <div class="tab active" data-tab="resumen">Resumen</div>
+    <div class="tab" data-tab="fichaje">Fichaje</div>
+    <div class="tab" data-tab="tareas">Tareas</div>
+    <div class="tab" data-tab="materiales">Materiales</div>
+  </div>
+
+  <div id="tabContent">
+    <div class="card">
+      <div class="placeholder">
+        Resumen semanal — se construye en el siguiente paso.
+      </div>
+    </div>
+  </div>
+</div>
+
+<script type="module">
+  import { requireAuth, logout } from "./js/auth.js";
+  import { renderFichaje } from "./js/fichaje.js";
+
+  const obraTitle = document.getElementById("obraTitle");
+  const tabContent = document.getElementById("tabContent");
+  const tabs = document.querySelectorAll(".tab");
+
+  const raw = sessionStorage.getItem("obraActual");
+  if (!raw) {
+    window.location.href = "dashboard.html";
+  }
+  const obraActual = JSON.parse(raw || "{}");
+
+  document.getElementById("backBtn").addEventListener("click", () => {
+    window.location.href = "dashboard.html";
+  });
+
+  document.getElementById("logoutBtn").addEventListener("click", async () => {
+    await logout();
+    window.location.href = "index.html";
+  });
+
+  requireAuth((user, perfil) => {
+    obraTitle.textContent = obraActual.nombre || "Obra";
+  });
+
+  const placeholders = {
+    resumen: "Resumen semanal — se construye en el siguiente paso.",
+    fichaje: "Fichaje con GPS — próximo paso.",
+    tareas: "Tareas ejecutadas — próximo paso.",
+    materiales: "Materiales pendientes de comprar — próximo paso."
+  };
+
+  tabs.forEach(tab => {
+    tab.addEventListener("click", () => {
+      tabs.forEach(t => t.classList.remove("active"));
+      tab.classList.add("active");
+      const key = tab.dataset.tab;
+      if (key === "fichaje") {
+        renderFichaje(tabContent, obraActual.id);
+      } else {
+        tabContent.innerHTML = `<div class="card"><div class="placeholder">${placeholders[key]}</div></div>`;
+      }
+    });
+  });
+</script>
+</body>
+</html>
