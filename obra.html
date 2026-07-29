@@ -37,6 +37,8 @@
 <script type="module">
   import { requireAuth, logout } from "./js/auth.js";
   import { renderFichaje } from "./js/fichaje.js";
+  import { renderTareas } from "./js/tareas.js";
+  import { renderMateriales } from "./js/materiales.js";
 
   const obraTitle = document.getElementById("obraTitle");
   const tabContent = document.getElementById("tabContent");
@@ -75,6 +77,10 @@
       const key = tab.dataset.tab;
       if (key === "fichaje") {
         renderFichaje(tabContent, obraActual.id);
+      } else if (key === "tareas") {
+        renderTareas(tabContent, obraActual.id);
+      } else if (key === "materiales") {
+        renderMateriales(tabContent, obraActual.id);
       } else {
         tabContent.innerHTML = `<div class="card"><div class="placeholder">${placeholders[key]}</div></div>`;
       }
