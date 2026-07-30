@@ -26,9 +26,10 @@ function capturarGPS() {
   });
 }
 
-async function cargarEmpleados() {
-  const snap = await getDocs(query(collection(db, "empleados"), orderBy("nombre")));
-  return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+async function cargarEmpleados(obraId) {
+  const snap = await getDocs(query(collection(db, "empleados"), where("obraAsignada", "==", obraId)));
+  return snap.docs.map(d => ({ id: d.id, ...d.data() }))
+    .sort((a, b) => (a.nombre || "").localeCompare(b.nombre || ""));
 }
 
 async function cargarFichajesHoy(obraId, fecha) {
@@ -56,7 +57,7 @@ export async function renderFichaje(container, obraId) {
 
   const fecha = fechaHoy();
   const [empleados, fichajes] = await Promise.all([
-    cargarEmpleados(),
+    cargarEmpleados(obraId),
     cargarFichajesHoy(obraId, fecha)
   ]);
 
@@ -143,7 +144,7 @@ export async function renderFichaje(container, obraId) {
       const input = document.getElementById("nuevoEmpleado");
       const nombre = input.value.trim();
       if (!nombre) return;
-      const ref = await addDoc(collection(db, "empleados"), { nombre, activo: true });
+      const ref = await addDoc(collection(db, "empleados"), { nombre, obraAsignada: obraId, activo: true });
       empleados.push({ id: ref.id, nombre });
       empleados.sort((a, b) => a.nombre.localeCompare(b.nombre));
       pintar();
@@ -164,8 +165,8 @@ export async function renderFichaje(container, obraId) {
       btn.addEventListener("click", async () => {
         const empId = btn.dataset.emp;
         const emp = empleados.find(e => e.id === empId);
-        if (!confirm(`¿Quitar a ${emp.nombre} de la lista de empleados? No borra su historial de fichajes ya guardados.`)) return;
-        await deleteDoc(doc(db, "empleados", empId));
+        if (!confirm(`¿Quitar a ${emp.nombre} de esta obra? Sigue en el directorio de empleados, solo deja de aparecer aquí.`)) return;
+        await setDoc(doc(db, "empleados", empId), { obraAsignada: "" }, { merge: true });
         const idx = empleados.findIndex(e => e.id === empId);
         if (idx > -1) empleados.splice(idx, 1);
         pintar();
