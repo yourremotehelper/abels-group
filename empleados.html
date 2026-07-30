@@ -42,6 +42,10 @@
 
   <div class="card">
     <h1 style="font-size:16px;margin-bottom:10px;">Todos los empleados</h1>
+    <input type="text" id="buscador" placeholder="Buscar por nombre..." style="margin-bottom:10px;">
+    <select id="filtroCategoria" style="width:100%;height:44px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);padding:0 12px;margin-bottom:14px;">
+      <option value="">Todas las categorías</option>
+    </select>
     <div id="empleadosList"><div class="loading">Cargando...</div></div>
   </div>
 </div>
@@ -57,6 +61,10 @@
   const createBtn = document.getElementById("createBtn");
   const obraSelect = document.getElementById("obraSelect");
   const empleadosList = document.getElementById("empleadosList");
+  const buscador = document.getElementById("buscador");
+  const filtroCategoria = document.getElementById("filtroCategoria");
+
+  let todosLosEmpleados = [];
 
   document.getElementById("backBtn").addEventListener("click", () => {
     window.location.href = "dashboard.html";
@@ -85,11 +93,29 @@
 
   async function cargarEmpleados() {
     const snap = await getDocs(collection(db, "empleados"));
-    const empleados = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+    todosLosEmpleados = snap.docs.map(d => ({ id: d.id, ...d.data() }))
       .sort((a, b) => (a.nombre || "").localeCompare(b.nombre || ""));
 
+    const categorias = [...new Set(todosLosEmpleados.map(e => e.categoria).filter(Boolean))].sort();
+    const categoriaActual = filtroCategoria.value;
+    filtroCategoria.innerHTML = '<option value="">Todas las categorías</option>' +
+      categorias.map(c => `<option value="${c}" ${c === categoriaActual ? "selected" : ""}>${c}</option>`).join("");
+
+    pintarLista();
+  }
+
+  function pintarLista() {
+    const textoBusqueda = buscador.value.trim().toLowerCase();
+    const categoriaFiltro = filtroCategoria.value;
+
+    const empleados = todosLosEmpleados.filter(emp => {
+      const coincideNombre = !textoBusqueda || (emp.nombre || "").toLowerCase().includes(textoBusqueda);
+      const coincideCategoria = !categoriaFiltro || emp.categoria === categoriaFiltro;
+      return coincideNombre && coincideCategoria;
+    });
+
     if (empleados.length === 0) {
-      empleadosList.innerHTML = '<div class="placeholder">Todavía no hay empleados.</div>';
+      empleadosList.innerHTML = '<div class="placeholder">No hay empleados que coincidan.</div>';
       return;
     }
 
@@ -101,7 +127,7 @@
       item.innerHTML = `
         <div>
           <p class="obra-name">${emp.nombre || "Sin nombre"}</p>
-          <p class="obra-meta">${emp.categoria || "Sin categoría"} · ${emp.telefono || "sin teléfono"}</p>
+          <p class="obra-meta">${emp.categoria || "Sin categoría"} · ${emp.telefono ? `<a href="tel:${emp.telefono}" style="color:var(--accent-dark);">${emp.telefono}</a>` : "sin teléfono"}</p>
           <p class="obra-meta">Obra: ${nombreObra(emp.obraAsignada)}</p>
         </div>
         <div style="display:flex;gap:6px;">
@@ -169,6 +195,9 @@
       createBtn.textContent = "Añadir a la ficha";
     }
   });
+
+  buscador.addEventListener("input", pintarLista);
+  filtroCategoria.addEventListener("change", pintarLista);
 
   requireAuth(async () => {
     await cargarObras();
