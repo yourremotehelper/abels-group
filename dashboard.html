@@ -41,6 +41,13 @@
   requireAuth(async (user, perfil) => {
     userName.textContent = perfil.nombre || user.email;
 
+    const linkDirectorio = document.createElement("button");
+    linkDirectorio.className = "secondary";
+    linkDirectorio.style.marginBottom = "10px";
+    linkDirectorio.textContent = "Directorio de empleados";
+    linkDirectorio.addEventListener("click", () => window.location.href = "empleados.html");
+    obrasCard.parentElement.insertBefore(linkDirectorio, obrasCard);
+
     if (perfil.rol === "admin") {
       const linkObras = document.createElement("button");
       linkObras.className = "secondary";
