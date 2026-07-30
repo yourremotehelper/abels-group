@@ -21,6 +21,12 @@
   <div class="card" id="obrasCard">
     <div class="loading">Cargando obras...</div>
   </div>
+
+  <div style="display:flex;gap:14px;justify-content:center;flex-wrap:wrap;margin-top:10px;">
+    <span style="font-size:12px;color:var(--text-secondary);"><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--danger);margin-right:4px;"></span>urgente pendiente</span>
+    <span style="font-size:12px;color:var(--text-secondary);"><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#D9A400;margin-right:4px;"></span>sin fichar hoy</span>
+    <span style="font-size:12px;color:var(--text-secondary);"><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--success);margin-right:4px;"></span>al día</span>
+  </div>
 </div>
 
 <script type="module">
@@ -32,6 +38,27 @@
 
   const obrasCard = document.getElementById("obrasCard");
   const userName = document.getElementById("userName");
+
+  function hoy() {
+    const d = new Date();
+    const pad = n => String(n).padStart(2, "0");
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  }
+
+  async function calcularEstado(obraId) {
+    try {
+      const [fichajesSnap, urgentesSnap] = await Promise.all([
+        getDocs(query(collection(db, "obras", obraId, "fichajes"), where("fecha", "==", hoy()))),
+        getDocs(query(collection(db, "obras", obraId, "necesidades"), where("prioridad", "==", "urgente")))
+      ]);
+      const hayUrgentesPendientes = urgentesSnap.docs.some(d => d.data().estado !== "hecho");
+      if (hayUrgentesPendientes) return "var(--danger)";
+      if (fichajesSnap.empty) return "#D9A400";
+      return "var(--success)";
+    } catch {
+      return "var(--text-muted)";
+    }
+  }
 
   document.getElementById("logoutBtn").addEventListener("click", async () => {
     await logout();
@@ -86,13 +113,16 @@
       }
 
       obrasCard.innerHTML = "";
-      obras.forEach(obra => {
+      for (const obra of obras) {
         const item = document.createElement("div");
         item.className = "obra-item";
         item.innerHTML = `
-          <div>
-            <p class="obra-name">${obra.nombre || "Sin nombre"}</p>
-            <p class="obra-meta">${obra.direccion || ""}</p>
+          <div style="display:flex;align-items:center;gap:10px;">
+            <span class="punto-estado" style="width:10px;height:10px;border-radius:50%;background:var(--text-muted);flex-shrink:0;"></span>
+            <div>
+              <p class="obra-name">${obra.nombre || "Sin nombre"}</p>
+              <p class="obra-meta">${obra.direccion || ""}</p>
+            </div>
           </div>
           <span style="color:var(--text-muted);">&#8250;</span>
         `;
@@ -101,7 +131,10 @@
           window.location.href = "obra.html";
         });
         obrasCard.appendChild(item);
-      });
+        calcularEstado(obra.id).then(color => {
+          item.querySelector(".punto-estado").style.background = color;
+        });
+      }
     } catch (err) {
       obrasCard.innerHTML = '<div class="placeholder">Error al cargar las obras.</div>';
       console.error(err);
