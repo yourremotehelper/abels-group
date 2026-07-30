@@ -39,6 +39,18 @@ async function cargarFichajesHoy(obraId, fecha) {
   return map;
 }
 
+function mapsLink(gps) {
+  if (!gps) return "";
+  return `https://www.google.com/maps?q=${gps.lat},${gps.lng}`;
+}
+
+function gpsLinks(f) {
+  const links = [];
+  if (f.gpsEntrada) links.push(`<a href="${mapsLink(f.gpsEntrada)}" target="_blank" style="font-size:11px;color:var(--text-accent, var(--accent));">ver entrada</a>`);
+  if (f.gpsSalida) links.push(`<a href="${mapsLink(f.gpsSalida)}" target="_blank" style="font-size:11px;color:var(--text-accent, var(--accent));margin-left:8px;">ver salida</a>`);
+  return links.join("");
+}
+
 export async function renderFichaje(container, obraId) {
   container.innerHTML = '<div class="loading">Cargando fichaje...</div>';
 
@@ -59,11 +71,17 @@ export async function renderFichaje(container, obraId) {
       const f = fichajes[emp.id];
       let estado;
       if (f && f.horaEntrada && f.horaSalida) {
-        estado = `<span style="font-size:12px;color:var(--success-dark);background:var(--success-bg);padding:3px 8px;border-radius:20px;">${f.horaEntrada} - ${f.horaSalida}</span>`;
+        estado = `<div style="text-align:right;">
+          <span style="font-size:12px;color:var(--success-dark);background:var(--success-bg);padding:3px 8px;border-radius:20px;">${f.horaEntrada} - ${f.horaSalida}</span>
+          <div style="margin-top:4px;">${gpsLinks(f)}</div>
+        </div>`;
       } else if (f && f.horaEntrada) {
-        estado = `<div style="display:flex;align-items:center;gap:8px;">
-          <span style="font-size:12px;color:var(--success-dark);background:var(--success-bg);padding:3px 8px;border-radius:20px;">entrada ${f.horaEntrada}</span>
-          <button class="btn-salida" data-emp="${emp.id}" data-nombre="${emp.nombre}" style="font-size:12px;padding:4px 10px;background:var(--accent);color:#fff;border:none;border-radius:6px;">marcar salida</button>
+        estado = `<div style="text-align:right;">
+          <div style="display:flex;align-items:center;gap:8px;justify-content:flex-end;">
+            <span style="font-size:12px;color:var(--success-dark);background:var(--success-bg);padding:3px 8px;border-radius:20px;">entrada ${f.horaEntrada}</span>
+            <button class="btn-salida" data-emp="${emp.id}" data-nombre="${emp.nombre}" style="font-size:12px;padding:4px 10px;background:var(--accent);color:#fff;border:none;border-radius:6px;">marcar salida</button>
+          </div>
+          <div style="margin-top:4px;">${gpsLinks(f)}</div>
         </div>`;
       } else {
         estado = `<button class="btn-entrada" data-emp="${emp.id}" data-nombre="${emp.nombre}" style="font-size:12px;padding:4px 10px;background:var(--accent);color:#fff;border:none;border-radius:6px;">marcar entrada</button>`;
