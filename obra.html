@@ -23,6 +23,7 @@
     <div class="tab" data-tab="fichaje">Fichaje</div>
     <div class="tab" data-tab="necesita">Se necesita</div>
     <div class="tab" data-tab="gastos">Gastos</div>
+    <div class="tab" data-tab="incidencias">Incidencias</div>
   </div>
 
   <div id="tabContent">
@@ -40,6 +41,7 @@
   import { renderNecesidades } from "./js/necesidades.js";
   import { renderResumen } from "./js/resumen.js";
   import { renderGastos } from "./js/gastos.js";
+  import { renderIncidencias } from "./js/incidencias.js";
 
   const obraTitle = document.getElementById("obraTitle");
   const tabContent = document.getElementById("tabContent");
@@ -80,6 +82,8 @@
         renderResumen(tabContent, obraActual.id);
       } else if (key === "gastos") {
         renderGastos(tabContent, obraActual.id);
+      } else if (key === "incidencias") {
+        renderIncidencias(tabContent, obraActual.id);
       }
     });
   });
