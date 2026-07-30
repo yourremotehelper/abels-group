@@ -42,6 +42,13 @@
     userName.textContent = perfil.nombre || user.email;
 
     if (perfil.rol === "admin") {
+      const linkObras = document.createElement("button");
+      linkObras.className = "secondary";
+      linkObras.style.marginBottom = "10px";
+      linkObras.textContent = "Gestionar obras";
+      linkObras.addEventListener("click", () => window.location.href = "obras.html");
+      obrasCard.parentElement.insertBefore(linkObras, obrasCard);
+
       const link = document.createElement("button");
       link.className = "secondary";
       link.style.marginBottom = "14px";
