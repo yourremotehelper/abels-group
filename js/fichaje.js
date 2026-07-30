@@ -1,6 +1,6 @@
 import { db } from "./firebase-config.js";
 import {
-  collection, getDocs, addDoc, doc, setDoc, query, where, orderBy
+  collection, getDocs, addDoc, doc, setDoc, deleteDoc, query, where, orderBy
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
 function fechaHoy() {
@@ -73,7 +73,7 @@ export async function renderFichaje(container, obraId) {
       if (f && f.horaEntrada && f.horaSalida) {
         estado = `<div style="text-align:right;">
           <span style="font-size:12px;color:var(--success-dark);background:var(--success-bg);padding:3px 8px;border-radius:20px;">${f.horaEntrada} - ${f.horaSalida}</span>
-          <div style="margin-top:4px;">${gpsLinks(f)}</div>
+          <div style="margin-top:4px;">${gpsLinks(f)} <button class="btn-borrar-fichaje" data-emp="${emp.id}" title="Borrar fichaje" style="border:none;background:none;color:var(--text-muted);font-size:13px;cursor:pointer;margin-left:6px;">&#128465;</button></div>
         </div>`;
       } else if (f && f.horaEntrada) {
         estado = `<div style="text-align:right;">
@@ -81,7 +81,7 @@ export async function renderFichaje(container, obraId) {
             <span style="font-size:12px;color:var(--success-dark);background:var(--success-bg);padding:3px 8px;border-radius:20px;">entrada ${f.horaEntrada}</span>
             <button class="btn-salida" data-emp="${emp.id}" data-nombre="${emp.nombre}" style="font-size:12px;padding:4px 10px;background:var(--accent);color:#fff;border:none;border-radius:6px;">marcar salida</button>
           </div>
-          <div style="margin-top:4px;">${gpsLinks(f)}</div>
+          <div style="margin-top:4px;">${gpsLinks(f)} <button class="btn-borrar-fichaje" data-emp="${emp.id}" title="Borrar fichaje" style="border:none;background:none;color:var(--text-muted);font-size:13px;cursor:pointer;margin-left:6px;">&#128465;</button></div>
         </div>`;
       } else {
         estado = `<button class="btn-entrada" data-emp="${emp.id}" data-nombre="${emp.nombre}" style="font-size:12px;padding:4px 10px;background:var(--accent);color:#fff;border:none;border-radius:6px;">marcar entrada</button>`;
@@ -89,7 +89,7 @@ export async function renderFichaje(container, obraId) {
 
       html += `
         <div class="obra-item">
-          <span style="font-size:14px;">${emp.nombre}</span>
+          <span style="font-size:14px;">${emp.nombre} <button class="btn-borrar-empleado" data-emp="${emp.id}" title="Quitar empleado de la lista" style="border:none;background:none;color:var(--text-muted);font-size:12px;cursor:pointer;">&#10005;</button></span>
           ${estado}
         </div>
       `;
@@ -147,6 +147,29 @@ export async function renderFichaje(container, obraId) {
       empleados.push({ id: ref.id, nombre });
       empleados.sort((a, b) => a.nombre.localeCompare(b.nombre));
       pintar();
+    });
+
+    container.querySelectorAll(".btn-borrar-fichaje").forEach(btn => {
+      btn.addEventListener("click", async () => {
+        if (!confirm("¿Borrar el fichaje de hoy de esta persona? Volverá a aparecer como no fichada.")) return;
+        const empId = btn.dataset.emp;
+        const docId = `${fecha}_${empId}`;
+        await deleteDoc(doc(db, "obras", obraId, "fichajes", docId));
+        delete fichajes[empId];
+        pintar();
+      });
+    });
+
+    container.querySelectorAll(".btn-borrar-empleado").forEach(btn => {
+      btn.addEventListener("click", async () => {
+        const empId = btn.dataset.emp;
+        const emp = empleados.find(e => e.id === empId);
+        if (!confirm(`¿Quitar a ${emp.nombre} de la lista de empleados? No borra su historial de fichajes ya guardados.`)) return;
+        await deleteDoc(doc(db, "empleados", empId));
+        const idx = empleados.findIndex(e => e.id === empId);
+        if (idx > -1) empleados.splice(idx, 1);
+        pintar();
+      });
     });
   }
 
