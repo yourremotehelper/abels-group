@@ -1,6 +1,6 @@
 import { db } from "./firebase-config.js";
 import {
-  collection, getDocs, addDoc, doc, updateDoc, query, orderBy
+  collection, getDocs, addDoc, doc, updateDoc, deleteDoc, query, orderBy
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
 function hoy() {
@@ -45,6 +45,7 @@ export async function renderNecesidades(container, obraId) {
               </div>
             </div>
           </div>
+          <button class="btn-borrar-item" data-id="${it.id}" title="Borrar" aria-label="Borrar" style="border:none;background:none;color:var(--text-muted);font-size:16px;padding:2px 6px;cursor:pointer;">&#128465;</button>
         </div>
       `;
     });
@@ -69,13 +70,26 @@ export async function renderNecesidades(container, obraId) {
     container.innerHTML = html;
 
     container.querySelectorAll(".obra-item[data-id]").forEach(el => {
-      el.addEventListener("click", async () => {
+      el.addEventListener("click", async (e) => {
+        if (e.target.closest(".btn-borrar-item")) return;
         const id = el.dataset.id;
         const item = items.find(i => i.id === id);
         const nuevoEstado = item.estado === "hecho" ? "pendiente" : "hecho";
         item.estado = nuevoEstado;
         pintar();
         await updateDoc(doc(db, "obras", obraId, "necesidades", id), { estado: nuevoEstado });
+      });
+    });
+
+    container.querySelectorAll(".btn-borrar-item").forEach(btn => {
+      btn.addEventListener("click", async (e) => {
+        e.stopPropagation();
+        if (!confirm("¿Borrar esto de la lista? No se puede deshacer.")) return;
+        const id = btn.dataset.id;
+        await deleteDoc(doc(db, "obras", obraId, "necesidades", id));
+        const idx = items.findIndex(i => i.id === id);
+        if (idx > -1) items.splice(idx, 1);
+        pintar();
       });
     });
 
