@@ -21,9 +21,10 @@ export async function renderResumen(container, obraId) {
   try {
     const limite = fechaHace7Dias();
 
-    const [fichajesSnap, necesidadesSnap] = await Promise.all([
+    const [fichajesSnap, necesidadesSnap, gastosSnap] = await Promise.all([
       getDocs(query(collection(db, "obras", obraId, "fichajes"), where("fecha", ">=", limite))),
-      getDocs(collection(db, "obras", obraId, "necesidades"))
+      getDocs(collection(db, "obras", obraId, "necesidades")),
+      getDocs(collection(db, "obras", obraId, "gastos"))
     ]);
 
     // Asistencia y horas de los últimos 7 días
@@ -51,6 +52,9 @@ export async function renderResumen(container, obraId) {
       }
     });
 
+    let totalGastos = 0;
+    gastosSnap.forEach(d => { totalGastos += Number(d.data().importe) || 0; });
+
     container.innerHTML = `
       <div class="card">
         <p style="font-size:13px;color:var(--text-secondary);margin:0 0 12px;">Resumen de los últimos 7 días</p>
@@ -70,6 +74,10 @@ export async function renderResumen(container, obraId) {
           <div style="background:var(--bg);border-radius:8px;padding:10px;">
             <p style="font-size:12px;color:var(--text-muted);margin:0 0 4px;">Por comprar</p>
             <p style="font-size:20px;font-weight:500;margin:0;">${materialesPendientes}</p>
+          </div>
+          <div style="background:var(--bg);border-radius:8px;padding:10px;grid-column:span 2;">
+            <p style="font-size:12px;color:var(--text-muted);margin:0 0 4px;">Gastado en total en esta obra</p>
+            <p style="font-size:20px;font-weight:500;margin:0;">${totalGastos.toFixed(2)} €</p>
           </div>
         </div>
       </div>
