@@ -21,7 +21,7 @@ function capturarGPS() {
     navigator.geolocation.getCurrentPosition(
       pos => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
       () => resolve(null),
-      { timeout: 8000 }
+      { timeout: 20000, enableHighAccuracy: true, maximumAge: 0 }
     );
   });
 }
@@ -72,17 +72,19 @@ export async function renderFichaje(container, obraId) {
       const f = fichajes[emp.id];
       let estado;
       if (f && f.horaEntrada && f.horaSalida) {
+        const linksTxt = gpsLinks(f) || `<span style="font-size:11px;color:var(--text-muted);">sin ubicación <button class="btn-reintentar-gps" data-emp="${emp.id}" data-tipo="${!f.gpsEntrada ? "entrada" : "salida"}" style="border:none;background:none;color:var(--accent-dark);font-size:11px;cursor:pointer;padding:0;">reintentar</button></span>`;
         estado = `<div style="text-align:right;">
           <span style="font-size:12px;color:var(--success-dark);background:var(--success-bg);padding:3px 8px;border-radius:20px;">${f.horaEntrada} - ${f.horaSalida}</span>
-          <div style="margin-top:4px;">${gpsLinks(f)} <button class="btn-borrar-fichaje" data-emp="${emp.id}" title="Borrar fichaje" style="border:none;background:none;color:var(--text-muted);font-size:13px;cursor:pointer;margin-left:6px;">&#128465;</button></div>
+          <div style="margin-top:4px;">${linksTxt} <button class="btn-borrar-fichaje" data-emp="${emp.id}" title="Borrar fichaje" style="border:none;background:none;color:var(--text-muted);font-size:13px;cursor:pointer;margin-left:6px;">&#128465;</button></div>
         </div>`;
       } else if (f && f.horaEntrada) {
+        const linksTxt = gpsLinks(f) || `<span style="font-size:11px;color:var(--text-muted);">sin ubicación <button class="btn-reintentar-gps" data-emp="${emp.id}" data-tipo="entrada" style="border:none;background:none;color:var(--accent-dark);font-size:11px;cursor:pointer;padding:0;">reintentar</button></span>`;
         estado = `<div style="text-align:right;">
           <div style="display:flex;align-items:center;gap:8px;justify-content:flex-end;">
             <span style="font-size:12px;color:var(--success-dark);background:var(--success-bg);padding:3px 8px;border-radius:20px;">entrada ${f.horaEntrada}</span>
             <button class="btn-salida" data-emp="${emp.id}" data-nombre="${emp.nombre}" style="font-size:12px;padding:4px 10px;background:var(--accent);color:#fff;border:none;border-radius:6px;">marcar salida</button>
           </div>
-          <div style="margin-top:4px;">${gpsLinks(f)} <button class="btn-borrar-fichaje" data-emp="${emp.id}" title="Borrar fichaje" style="border:none;background:none;color:var(--text-muted);font-size:13px;cursor:pointer;margin-left:6px;">&#128465;</button></div>
+          <div style="margin-top:4px;">${linksTxt} <button class="btn-borrar-fichaje" data-emp="${emp.id}" title="Borrar fichaje" style="border:none;background:none;color:var(--text-muted);font-size:13px;cursor:pointer;margin-left:6px;">&#128465;</button></div>
         </div>`;
       } else {
         estado = `<button class="btn-entrada" data-emp="${emp.id}" data-nombre="${emp.nombre}" style="font-size:12px;padding:4px 10px;background:var(--accent);color:#fff;border:none;border-radius:6px;">marcar entrada</button>`;
@@ -150,8 +152,27 @@ export async function renderFichaje(container, obraId) {
       pintar();
     });
 
-    container.querySelectorAll(".btn-borrar-fichaje").forEach(btn => {
+    container.querySelectorAll(".btn-reintentar-gps").forEach(btn => {
       btn.addEventListener("click", async () => {
+        btn.textContent = "Ubicando...";
+        const gps = await capturarGPS();
+        const empId = btn.dataset.emp;
+        const tipo = btn.dataset.tipo;
+        const docId = `${fecha}_${empId}`;
+        if (!gps) {
+          alert("Sigue sin poder obtener la ubicación. Comprueba que el GPS del móvil esté activado y que la app tenga permiso de ubicación.");
+          pintar();
+          return;
+        }
+        await setDoc(doc(db, "obras", obraId, "fichajes", docId), {
+          [tipo === "entrada" ? "gpsEntrada" : "gpsSalida"]: gps
+        }, { merge: true });
+        fichajes[empId][tipo === "entrada" ? "gpsEntrada" : "gpsSalida"] = gps;
+        pintar();
+      });
+    });
+
+    container.querySelectorAll(".btn-borrar-fichaje").forEach(btn => {      btn.addEventListener("click", async () => {
         if (!confirm("¿Borrar el fichaje de hoy de esta persona? Volverá a aparecer como no fichada.")) return;
         const empId = btn.dataset.emp;
         const docId = `${fecha}_${empId}`;
