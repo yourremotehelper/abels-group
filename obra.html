@@ -3,81 +3,132 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<title>Abel's | Obra</title>
+<title>Abel's | Obras</title>
 <link rel="manifest" href="manifest.json">
 <link rel="stylesheet" href="css/styles.css">
 </head>
 <body>
 <div class="screen">
   <div class="topbar">
-    <button class="icon-btn" id="backBtn" title="Cambiar de obra" aria-label="Volver al selector de obras">&#8592;</button>
+    <button class="icon-btn" id="backBtn" title="Volver" aria-label="Volver">&#8592;</button>
     <div class="topbar-info">
-      <p class="topbar-obra">Obra</p>
-      <p class="topbar-title" id="obraTitle">Cargando...</p>
+      <p class="topbar-obra">Administración</p>
+      <p class="topbar-title">Obras</p>
     </div>
-    <button class="icon-btn" id="logoutBtn" title="Salir" aria-label="Cerrar sesión" style="width:auto;padding:0 12px;gap:6px;">Salir</button>
   </div>
 
-  <div class="tabs">
-    <div class="tab active" data-tab="resumen">Resumen</div>
-    <div class="tab" data-tab="fichaje">Fichaje</div>
-    <div class="tab" data-tab="necesita">Se necesita</div>
+  <div class="card">
+    <h1 style="font-size:16px;margin-bottom:14px;">Crear nueva obra</h1>
+    <div class="error-msg" id="errorMsg"></div>
+
+    <form id="createForm">
+      <label for="nombre">Nombre de la obra</label>
+      <input type="text" id="nombre" required placeholder="Reforma Sant Vicenç 70">
+
+      <label for="direccion">Dirección</label>
+      <input type="text" id="direccion" placeholder="Carrer Sant Vicenç Ferrer, 70, Palma">
+
+      <button type="submit" class="primary" id="createBtn">Crear obra</button>
+    </form>
   </div>
 
-  <div id="tabContent">
-    <div class="card">
-      <div class="placeholder">
-        Resumen semanal — se construye en el siguiente paso.
-      </div>
-    </div>
+  <div class="card">
+    <h1 style="font-size:16px;margin-bottom:10px;">Obras existentes</h1>
+    <div id="obrasList"><div class="loading">Cargando...</div></div>
   </div>
 </div>
 
 <script type="module">
-  import { requireAuth, logout } from "./js/auth.js";
-  import { renderFichaje } from "./js/fichaje.js";
-  import { renderNecesidades } from "./js/necesidades.js";
-  import { renderResumen } from "./js/resumen.js";
+  import { requireAuth } from "./js/auth.js";
+  import { db } from "./js/firebase-config.js";
+  import {
+    collection, getDocs, addDoc, doc, updateDoc, deleteDoc
+  } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
-  const obraTitle = document.getElementById("obraTitle");
-  const tabContent = document.getElementById("tabContent");
-  const tabs = document.querySelectorAll(".tab");
-
-  const raw = sessionStorage.getItem("obraActual");
-  if (!raw) {
-    window.location.href = "dashboard.html";
-  }
-  const obraActual = JSON.parse(raw || "{}");
+  const errorMsg = document.getElementById("errorMsg");
+  const createBtn = document.getElementById("createBtn");
+  const obrasList = document.getElementById("obrasList");
 
   document.getElementById("backBtn").addEventListener("click", () => {
     window.location.href = "dashboard.html";
   });
 
-  document.getElementById("logoutBtn").addEventListener("click", async () => {
-    await logout();
-    window.location.href = "index.html";
+  async function cargarObras() {
+    const snap = await getDocs(collection(db, "obras"));
+    if (snap.empty) {
+      obrasList.innerHTML = '<div class="placeholder">Todavía no hay obras creadas.</div>';
+      return;
+    }
+    obrasList.innerHTML = "";
+    snap.forEach(d => {
+      const o = d.data();
+      const item = document.createElement("div");
+      item.className = "obra-item";
+      item.style.alignItems = "flex-start";
+      item.innerHTML = `
+        <div style="flex:1;">
+          <p class="obra-name">${o.nombre || "Sin nombre"}</p>
+          <p class="obra-meta">${o.direccion || ""}</p>
+        </div>
+        <div style="display:flex;gap:6px;">
+          <button class="icon-btn btn-editar" title="Editar" aria-label="Editar" style="width:32px;height:32px;font-size:14px;">&#9998;</button>
+          <button class="icon-btn btn-borrar" title="Borrar obra" aria-label="Borrar obra" style="width:32px;height:32px;font-size:14px;">&#128465;</button>
+        </div>
+      `;
+      item.querySelector(".btn-borrar").addEventListener("click", async () => {
+        if (!confirm(`¿Borrar "${o.nombre}"? Esto no borra el histórico de fichajes ni de tareas que ya tuviera, solo la obra en sí y dejará de aparecer en el selector.`)) return;
+        await deleteDoc(doc(db, "obras", d.id));
+        cargarObras();
+      });
+      item.querySelector(".btn-editar").addEventListener("click", () => {
+        item.innerHTML = `
+          <div style="flex:1;">
+            <input type="text" class="edit-nombre" value="${o.nombre || ""}" style="margin-bottom:8px;">
+            <input type="text" class="edit-direccion" value="${o.direccion || ""}" style="margin-bottom:8px;">
+            <button class="primary btn-guardar" style="height:38px;">Guardar</button>
+          </div>
+        `;
+        item.querySelector(".btn-guardar").addEventListener("click", async () => {
+          const nuevoNombre = item.querySelector(".edit-nombre").value.trim();
+          const nuevaDireccion = item.querySelector(".edit-direccion").value.trim();
+          if (!nuevoNombre) return;
+          await updateDoc(doc(db, "obras", d.id), { nombre: nuevoNombre, direccion: nuevaDireccion });
+          cargarObras();
+        });
+      });
+      obrasList.appendChild(item);
+    });
+  }
+
+  document.getElementById("createForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    errorMsg.style.display = "none";
+    createBtn.disabled = true;
+    createBtn.textContent = "Creando...";
+
+    const nombre = document.getElementById("nombre").value.trim();
+    const direccion = document.getElementById("direccion").value.trim();
+
+    try {
+      await addDoc(collection(db, "obras"), { nombre, direccion });
+      document.getElementById("createForm").reset();
+      cargarObras();
+    } catch (err) {
+      errorMsg.textContent = "No se ha podido crear la obra.";
+      errorMsg.style.display = "block";
+    } finally {
+      createBtn.disabled = false;
+      createBtn.textContent = "Crear obra";
+    }
   });
 
   requireAuth((user, perfil) => {
-    obraTitle.textContent = obraActual.nombre || "Obra";
-    renderResumen(tabContent, obraActual.id);
-  });
-
-  const placeholders = {};
-
-  tabs.forEach(tab => {
-    tab.addEventListener("click", () => {
-      tabs.forEach(t => t.classList.remove("active"));
-      tab.classList.add("active");
-      const key = tab.dataset.tab;
-      if (key === "fichaje") {
-        renderFichaje(tabContent, obraActual.id);
-      } else if (key === "necesita") {
-        renderNecesidades(tabContent, obraActual.id);
-      } else if (key === "resumen") {
-        renderResumen(tabContent, obraActual.id);
-      }
-    });
+    if (perfil.rol !== "admin") {
+      alert("Solo un administrador puede gestionar obras.");
+      window.location.href = "dashboard.html";
+      return;
+    }
+    cargarObras();
   });
 </script>
 </body>
