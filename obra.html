@@ -21,8 +21,7 @@
   <div class="tabs">
     <div class="tab active" data-tab="resumen">Resumen</div>
     <div class="tab" data-tab="fichaje">Fichaje</div>
-    <div class="tab" data-tab="tareas">Tareas</div>
-    <div class="tab" data-tab="materiales">Materiales</div>
+    <div class="tab" data-tab="necesita">Se necesita</div>
   </div>
 
   <div id="tabContent">
@@ -37,8 +36,7 @@
 <script type="module">
   import { requireAuth, logout } from "./js/auth.js";
   import { renderFichaje } from "./js/fichaje.js";
-  import { renderTareas } from "./js/tareas.js";
-  import { renderMateriales } from "./js/materiales.js";
+  import { renderNecesidades } from "./js/necesidades.js";
 
   const obraTitle = document.getElementById("obraTitle");
   const tabContent = document.getElementById("tabContent");
@@ -64,10 +62,7 @@
   });
 
   const placeholders = {
-    resumen: "Resumen semanal — se construye en el siguiente paso.",
-    fichaje: "Fichaje con GPS — próximo paso.",
-    tareas: "Tareas ejecutadas — próximo paso.",
-    materiales: "Materiales pendientes de comprar — próximo paso."
+    resumen: "Resumen semanal — se construye en el siguiente paso."
   };
 
   tabs.forEach(tab => {
@@ -77,10 +72,8 @@
       const key = tab.dataset.tab;
       if (key === "fichaje") {
         renderFichaje(tabContent, obraActual.id);
-      } else if (key === "tareas") {
-        renderTareas(tabContent, obraActual.id);
-      } else if (key === "materiales") {
-        renderMateriales(tabContent, obraActual.id);
+      } else if (key === "necesita") {
+        renderNecesidades(tabContent, obraActual.id);
       } else {
         tabContent.innerHTML = `<div class="card"><div class="placeholder">${placeholders[key]}</div></div>`;
       }
