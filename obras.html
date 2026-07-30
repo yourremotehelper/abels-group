@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Abel's | Obras</title>
+<link rel="manifest" href="manifest.json">
+<link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+<div class="screen">
+  <div class="topbar">
+    <button class="icon-btn" id="backBtn" title="Volver" aria-label="Volver">&#8592;</button>
+    <div class="topbar-info">
+      <p class="topbar-obra">Administración</p>
+      <p class="topbar-title">Obras</p>
+    </div>
+  </div>
+
+  <div class="card">
+    <h1 style="font-size:16px;margin-bottom:14px;">Crear nueva obra</h1>
+    <div class="error-msg" id="errorMsg"></div>
+
+    <form id="createForm">
+      <label for="nombre">Nombre de la obra</label>
+      <input type="text" id="nombre" required placeholder="Reforma Sant Vicenç 70">
+
+      <label for="direccion">Dirección</label>
+      <input type="text" id="direccion" placeholder="Carrer Sant Vicenç Ferrer, 70, Palma">
+
+      <button type="submit" class="primary" id="createBtn">Crear obra</button>
+    </form>
+  </div>
+
+  <div class="card">
+    <h1 style="font-size:16px;margin-bottom:10px;">Obras existentes</h1>
+    <div id="obrasList"><div class="loading">Cargando...</div></div>
+  </div>
+</div>
+
+<script type="module">
+  import { requireAuth } from "./js/auth.js";
+  import { db } from "./js/firebase-config.js";
+  import {
+    collection, getDocs, addDoc, doc, updateDoc, deleteDoc
+  } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+  const errorMsg = document.getElementById("errorMsg");
+  const createBtn = document.getElementById("createBtn");
+  const obrasList = document.getElementById("obrasList");
+
+  document.getElementById("backBtn").addEventListener("click", () => {
+    window.location.href = "dashboard.html";
+  });
+
+  async function cargarObras() {
+    const snap = await getDocs(collection(db, "obras"));
+    if (snap.empty) {
+      obrasList.innerHTML = '<div class="placeholder">Todavía no hay obras creadas.</div>';
+      return;
+    }
+    obrasList.innerHTML = "";
+    snap.forEach(d => {
+      const o = d.data();
+      const item = document.createElement("div");
+      item.className = "obra-item";
+      item.style.alignItems = "flex-start";
+      item.innerHTML = `
+        <div style="flex:1;">
+          <p class="obra-name">${o.nombre || "Sin nombre"}</p>
+          <p class="obra-meta">${o.direccion || ""}</p>
+        </div>
+        <div style="display:flex;gap:6px;">
+          <button class="icon-btn btn-editar" title="Editar" aria-label="Editar" style="width:32px;height:32px;font-size:14px;">&#9998;</button>
+          <button class="icon-btn btn-borrar" title="Borrar obra" aria-label="Borrar obra" style="width:32px;height:32px;font-size:14px;">&#128465;</button>
+        </div>
+      `;
+      item.querySelector(".btn-borrar").addEventListener("click", async () => {
+        if (!confirm(`¿Borrar "${o.nombre}"? Esto no borra el histórico de fichajes ni de tareas que ya tuviera, solo la obra en sí y dejará de aparecer en el selector.`)) return;
+        await deleteDoc(doc(db, "obras", d.id));
+        cargarObras();
+      });
+      item.querySelector(".btn-editar").addEventListener("click", () => {
+        item.innerHTML = `
+          <div style="flex:1;">
+            <input type="text" class="edit-nombre" value="${o.nombre || ""}" style="margin-bottom:8px;">
+            <input type="text" class="edit-direccion" value="${o.direccion || ""}" style="margin-bottom:8px;">
+            <button class="primary btn-guardar" style="height:38px;">Guardar</button>
+          </div>
+        `;
+        item.querySelector(".btn-guardar").addEventListener("click", async () => {
+          const nuevoNombre = item.querySelector(".edit-nombre").value.trim();
+          const nuevaDireccion = item.querySelector(".edit-direccion").value.trim();
+          if (!nuevoNombre) return;
+          await updateDoc(doc(db, "obras", d.id), { nombre: nuevoNombre, direccion: nuevaDireccion });
+          cargarObras();
+        });
+      });
+      obrasList.appendChild(item);
+    });
+  }
+
+  document.getElementById("createForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    errorMsg.style.display = "none";
+    createBtn.disabled = true;
+    createBtn.textContent = "Creando...";
+
+    const nombre = document.getElementById("nombre").value.trim();
+    const direccion = document.getElementById("direccion").value.trim();
+
+    try {
+      await addDoc(collection(db, "obras"), { nombre, direccion });
+      document.getElementById("createForm").reset();
+      cargarObras();
+    } catch (err) {
+      errorMsg.textContent = "No se ha podido crear la obra.";
+      errorMsg.style.display = "block";
+    } finally {
+      createBtn.disabled = false;
+      createBtn.textContent = "Crear obra";
+    }
+  });
+
+  requireAuth((user, perfil) => {
+    if (perfil.rol !== "admin") {
+      alert("Solo un administrador puede gestionar obras.");
+      window.location.href = "dashboard.html";
+      return;
+    }
+    cargarObras();
+  });
+</script>
+</body>
+</html>
