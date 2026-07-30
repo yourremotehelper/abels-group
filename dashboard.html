@@ -78,6 +78,13 @@
     obrasCard.parentElement.insertBefore(linkDirectorio, obrasCard);
 
     if (perfil.rol === "admin") {
+      const linkExportar = document.createElement("button");
+      linkExportar.className = "secondary";
+      linkExportar.style.marginBottom = "10px";
+      linkExportar.textContent = "Exportar fichajes";
+      linkExportar.addEventListener("click", () => window.location.href = "exportar.html");
+      obrasCard.parentElement.insertBefore(linkExportar, obrasCard);
+
       const linkObras = document.createElement("button");
       linkObras.className = "secondary";
       linkObras.style.marginBottom = "10px";
