@@ -47,12 +47,14 @@
 
   async function calcularEstado(obraId) {
     try {
-      const [fichajesSnap, urgentesSnap] = await Promise.all([
+      const [fichajesSnap, urgentesSnap, incidenciasSnap] = await Promise.all([
         getDocs(query(collection(db, "obras", obraId, "fichajes"), where("fecha", "==", hoy()))),
-        getDocs(query(collection(db, "obras", obraId, "necesidades"), where("prioridad", "==", "urgente")))
+        getDocs(query(collection(db, "obras", obraId, "necesidades"), where("prioridad", "==", "urgente"))),
+        getDocs(query(collection(db, "obras", obraId, "incidencias"), where("estado", "==", "abierta")))
       ]);
       const hayUrgentesPendientes = urgentesSnap.docs.some(d => d.data().estado !== "hecho");
-      if (hayUrgentesPendientes) return "var(--danger)";
+      const hayIncidenciasAbiertas = !incidenciasSnap.empty;
+      if (hayUrgentesPendientes || hayIncidenciasAbiertas) return "var(--danger)";
       if (fichajesSnap.empty) return "#D9A400";
       return "var(--success)";
     } catch {
