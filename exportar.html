@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Abel's | Exportar fichajes</title>
+<link rel="manifest" href="manifest.json">
+<link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+<div class="screen">
+  <div class="topbar">
+    <button class="icon-btn" id="backBtn" title="Volver" aria-label="Volver">&#8592;</button>
+    <div class="topbar-info">
+      <p class="topbar-obra">Administración</p>
+      <p class="topbar-title">Exportar fichajes</p>
+    </div>
+  </div>
+
+  <div class="card">
+    <p style="font-size:13px;color:var(--text-secondary);margin:0 0 16px;">Descarga el registro horario para una inspección de trabajo o para tus propios archivos.</p>
+
+    <div class="error-msg" id="errorMsg"></div>
+
+    <label for="obraSelect">Obra</label>
+    <select id="obraSelect" style="width:100%;height:44px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);padding:0 12px;margin-bottom:14px;">
+      <option value="">Todas las obras</option>
+    </select>
+
+    <label for="desde">Desde</label>
+    <input type="date" id="desde">
+
+    <label for="hasta">Hasta</label>
+    <input type="date" id="hasta">
+
+    <button id="descargarBtn" class="primary" style="margin-top:6px;">Descargar CSV</button>
+    <p id="resultadoTxt" style="font-size:12px;color:var(--text-muted);margin:10px 0 0;"></p>
+  </div>
+</div>
+
+<script type="module">
+  import { requireAuth } from "./js/auth.js";
+  import { db } from "./js/firebase-config.js";
+  import {
+    collection, collectionGroup, getDocs, query, where
+  } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+  const obraSelect = document.getElementById("obraSelect");
+  const desdeInput = document.getElementById("desde");
+  const hastaInput = document.getElementById("hasta");
+  const descargarBtn = document.getElementById("descargarBtn");
+  const resultadoTxt = document.getElementById("resultadoTxt");
+  const errorMsg = document.getElementById("errorMsg");
+
+  document.getElementById("backBtn").addEventListener("click", () => {
+    window.location.href = "dashboard.html";
+  });
+
+  let obras = [];
+
+  function hoy() {
+    return new Date().toISOString().slice(0, 10);
+  }
+
+  function inicioMes() {
+    const d = new Date();
+    d.setDate(1);
+    return d.toISOString().slice(0, 10);
+  }
+
+  async function cargarObras() {
+    const snap = await getDocs(collection(db, "obras"));
+    obras = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    obraSelect.innerHTML = '<option value="">Todas las obras</option>' +
+      obras.map(o => `<option value="${o.id}">${o.nombre}</option>`).join("");
+  }
+
+  function nombreObra(id) {
+    const o = obras.find(o => o.id === id);
+    return o ? o.nombre : id;
+  }
+
+  function csvEscape(valor) {
+    const txt = String(valor ?? "");
+    return `"${txt.replace(/"/g, '""')}"`;
+  }
+
+  function horasEntreHoras(entrada, salida) {
+    if (!entrada || !salida) return "";
+    const [h1, m1] = entrada.split(":").map(Number);
+    const [h2, m2] = salida.split(":").map(Number);
+    const diff = (h2 * 60 + m2) - (h1 * 60 + m1);
+    if (diff <= 0) return "";
+    return (diff / 60).toFixed(2);
+  }
+
+  function ubicacionTexto(gps) {
+    return gps ? `${gps.lat}, ${gps.lng}` : "";
+  }
+
+  descargarBtn.addEventListener("click", async () => {
+    errorMsg.style.display = "none";
+    const obraId = obraSelect.value;
+    const desde = desdeInput.value;
+    const hasta = hastaInput.value;
+
+    if (!desde || !hasta) {
+      errorMsg.textContent = "Elige una fecha de inicio y de fin.";
+      errorMsg.style.display = "block";
+      return;
+    }
+
+    descargarBtn.disabled = true;
+    descargarBtn.textContent = "Preparando...";
+    resultadoTxt.textContent = "";
+
+    try {
+      let filas = [];
+
+      if (obraId) {
+        const snap = await getDocs(query(
+          collection(db, "obras", obraId, "fichajes"),
+          where("fecha", ">=", desde),
+          where("fecha", "<=", hasta)
+        ));
+        snap.forEach(d => {
+          const f = d.data();
+          filas.push({ obra: nombreObra(obraId), ...f });
+        });
+      } else {
+        const snap = await getDocs(query(
+          collectionGroup(db, "fichajes"),
+          where("fecha", ">=", desde),
+          where("fecha", "<=", hasta)
+        ));
+        snap.forEach(d => {
+          const f = d.data();
+          const obraIdDoc = d.ref.parent.parent.id;
+          filas.push({ obra: nombreObra(obraIdDoc), ...f });
+        });
+      }
+
+      filas.sort((a, b) => (a.fecha + a.empleadoNombre).localeCompare(b.fecha + b.empleadoNombre));
+
+      if (filas.length === 0) {
+        resultadoTxt.textContent = "No hay fichajes en ese rango de fechas.";
+        return;
+      }
+
+      const cabecera = ["Obra", "Empleado", "Fecha", "Hora entrada", "Hora salida", "Horas trabajadas", "Ubicación entrada", "Ubicación salida"];
+      const lineas = [cabecera.map(csvEscape).join(";")];
+
+      filas.forEach(f => {
+        lineas.push([
+          f.obra,
+          f.empleadoNombre || "",
+          f.fecha || "",
+          f.horaEntrada || "",
+          f.horaSalida || "",
+          horasEntreHoras(f.horaEntrada, f.horaSalida),
+          ubicacionTexto(f.gpsEntrada),
+          ubicacionTexto(f.gpsSalida)
+        ].map(csvEscape).join(";"));
+      });
+
+      const csv = "\uFEFF" + lineas.join("\r\n");
+      const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `fichajes_${obraId ? nombreObra(obraId).replace(/\s+/g, "_") : "todas_las_obras"}_${desde}_a_${hasta}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+
+      resultadoTxt.textContent = `${filas.length} fichajes descargados.`;
+    } catch (err) {
+      console.error(err);
+      errorMsg.textContent = "No se ha podido generar el archivo. " + (err.message || "");
+      errorMsg.style.display = "block";
+    } finally {
+      descargarBtn.disabled = false;
+      descargarBtn.textContent = "Descargar CSV";
+    }
+  });
+
+  requireAuth(async (user, perfil) => {
+    if (perfil.rol !== "admin") {
+      alert("Solo un administrador puede exportar fichajes.");
+      window.location.href = "dashboard.html";
+      return;
+    }
+    await cargarObras();
+    desdeInput.value = inicioMes();
+    hastaInput.value = hoy();
+  });
+</script>
+</body>
+</html>
