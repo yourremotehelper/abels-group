@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<title>Abel's | Encargados</title>
+<title>Abel's | Usuarios</title>
 <link rel="manifest" href="manifest.json">
 <link rel="stylesheet" href="css/styles.css">
 </head>
@@ -13,12 +13,12 @@
     <button class="icon-btn" id="backBtn" title="Volver" aria-label="Volver">&#8592;</button>
     <div class="topbar-info">
       <p class="topbar-obra">Administración</p>
-      <p class="topbar-title">Encargados</p>
+      <p class="topbar-title">Usuarios</p>
     </div>
   </div>
 
   <div class="card">
-    <h1 style="font-size:16px;margin-bottom:14px;">Crear nuevo encargado</h1>
+    <h1 style="font-size:16px;margin-bottom:14px;">Crear nuevo usuario</h1>
 
     <div class="error-msg" id="errorMsg"></div>
     <div class="error-msg" id="okMsg" style="color:var(--success-dark);background:var(--success-bg);"></div>
@@ -33,17 +33,25 @@
       <label for="password">Contraseña</label>
       <input type="text" id="password" required>
 
-      <label for="obrasList">Obras asignadas</label>
-      <div id="obrasList" class="card" style="padding:10px; margin-bottom:14px;">
-        <div class="loading">Cargando obras...</div>
+      <label for="rolSelect">Tipo de usuario</label>
+      <select id="rolSelect" style="width:100%;height:44px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);padding:0 12px;margin-bottom:14px;">
+        <option value="encargado">Encargado (ve solo sus obras asignadas)</option>
+        <option value="admin">Administrador (ve todas las obras y puede gestionar usuarios y obras)</option>
+      </select>
+
+      <div id="obrasWrapper">
+        <label for="obrasList">Obras asignadas</label>
+        <div id="obrasList" class="card" style="padding:10px; margin-bottom:14px;">
+          <div class="loading">Cargando obras...</div>
+        </div>
       </div>
 
-      <button type="submit" class="primary" id="createBtn">Crear encargado</button>
+      <button type="submit" class="primary" id="createBtn">Crear usuario</button>
     </form>
   </div>
 
   <div class="card">
-    <h1 style="font-size:16px;margin-bottom:10px;">Encargados existentes</h1>
+    <h1 style="font-size:16px;margin-bottom:10px;">Usuarios existentes</h1>
     <div id="usuariosList"><div class="loading">Cargando...</div></div>
   </div>
 </div>
@@ -56,12 +64,14 @@
     getAuth, createUserWithEmailAndPassword, signOut
   } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
   import {
-    collection, getDocs, doc, setDoc, deleteDoc
+    collection, getDocs, doc, setDoc, updateDoc, deleteDoc
   } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
   const nombreInput = document.getElementById("nombre");
   const emailPreview = document.getElementById("emailPreview");
   const passwordInput = document.getElementById("password");
+  const rolSelect = document.getElementById("rolSelect");
+  const obrasWrapper = document.getElementById("obrasWrapper");
   const obrasList = document.getElementById("obrasList");
   const errorMsg = document.getElementById("errorMsg");
   const okMsg = document.getElementById("okMsg");
@@ -92,6 +102,10 @@
   });
   passwordInput.value = generarPassword();
 
+  rolSelect.addEventListener("change", () => {
+    obrasWrapper.style.display = rolSelect.value === "admin" ? "none" : "block";
+  });
+
   let obras = [];
 
   async function cargarObras() {
@@ -112,7 +126,7 @@
   async function cargarUsuarios() {
     const snap = await getDocs(collection(db, "usuarios"));
     if (snap.empty) {
-      usuariosList.innerHTML = '<div class="placeholder">Todavía no hay encargados.</div>';
+      usuariosList.innerHTML = '<div class="placeholder">Todavía no hay usuarios.</div>';
       return;
     }
     usuariosList.innerHTML = "";
@@ -120,17 +134,64 @@
       const u = d.data();
       const item = document.createElement("div");
       item.className = "obra-item";
+      item.style.alignItems = "flex-start";
       item.innerHTML = `
         <div>
           <p class="obra-name">${u.nombre || "Sin nombre"}</p>
-          <p class="obra-meta">${u.rol} · ${(u.obrasAsignadas || []).length} obra(s)</p>
+          <p class="obra-meta">${u.rol}${u.rol === "encargado" ? " · " + (u.obrasAsignadas || []).length + " obra(s)" : ""}</p>
         </div>
-        <button class="icon-btn" title="Quitar acceso" aria-label="Quitar acceso" data-uid="${d.id}">&#10005;</button>
+        <div style="display:flex;gap:6px;">
+          <button class="icon-btn btn-editar-usuario" title="Editar" aria-label="Editar" style="width:32px;height:32px;font-size:14px;">&#9998;</button>
+          <button class="icon-btn btn-quitar" title="Quitar acceso" aria-label="Quitar acceso" style="width:32px;height:32px;font-size:14px;">&#10005;</button>
+        </div>
       `;
-      item.querySelector("button").addEventListener("click", async () => {
+      item.querySelector(".btn-quitar").addEventListener("click", async () => {
         if (!confirm(`¿Quitar el acceso de ${u.nombre}? Ya no podrá entrar en la app.`)) return;
         await deleteDoc(doc(db, "usuarios", d.id));
         cargarUsuarios();
+      });
+      item.querySelector(".btn-editar-usuario").addEventListener("click", () => {
+        const obrasHtml = obras.map(o => `
+          <label style="display:flex;align-items:center;gap:8px;font-size:14px;margin-bottom:8px;color:var(--text);">
+            <input type="checkbox" value="${o.id}" class="edit-obra-check" style="width:auto;margin:0;" ${(u.obrasAsignadas || []).includes(o.id) ? "checked" : ""}>
+            ${o.nombre || o.id}
+          </label>
+        `).join("") || '<p style="font-size:13px;color:var(--text-muted);margin:0;">No hay obras creadas todavía.</p>';
+
+        item.innerHTML = `
+          <div style="flex:1;">
+            <input type="text" class="edit-nombre" value="${u.nombre || ""}" style="margin-bottom:8px;">
+            <select class="edit-rol" style="width:100%;height:44px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);padding:0 12px;margin-bottom:10px;">
+              <option value="encargado" ${u.rol === "encargado" ? "selected" : ""}>Encargado</option>
+              <option value="admin" ${u.rol === "admin" ? "selected" : ""}>Administrador</option>
+            </select>
+            <div class="edit-obras-wrapper" style="display:${u.rol === "admin" ? "none" : "block"};margin-bottom:10px;">
+              ${obrasHtml}
+            </div>
+            <button class="primary btn-guardar-usuario" style="height:38px;">Guardar</button>
+          </div>
+        `;
+
+        const rolEdit = item.querySelector(".edit-rol");
+        const obrasEdit = item.querySelector(".edit-obras-wrapper");
+        rolEdit.addEventListener("change", () => {
+          obrasEdit.style.display = rolEdit.value === "admin" ? "none" : "block";
+        });
+
+        item.querySelector(".btn-guardar-usuario").addEventListener("click", async () => {
+          const nuevoNombre = item.querySelector(".edit-nombre").value.trim();
+          const nuevoRol = rolEdit.value;
+          const nuevasObras = nuevoRol === "admin"
+            ? []
+            : Array.from(item.querySelectorAll(".edit-obra-check:checked")).map(c => c.value);
+          if (!nuevoNombre) return;
+          await updateDoc(doc(db, "usuarios", d.id), {
+            nombre: nuevoNombre,
+            rol: nuevoRol,
+            obrasAsignadas: nuevasObras
+          });
+          cargarUsuarios();
+        });
       });
       usuariosList.appendChild(item);
     });
@@ -146,7 +207,10 @@
     const nombre = nombreInput.value.trim();
     const email = emailPreview.value;
     const password = passwordInput.value;
-    const obrasAsignadas = Array.from(document.querySelectorAll(".obra-check:checked")).map(c => c.value);
+    const rol = rolSelect.value;
+    const obrasAsignadas = rol === "admin"
+      ? []
+      : Array.from(document.querySelectorAll(".obra-check:checked")).map(c => c.value);
 
     // Se usa una app secundaria para no cerrar la sesión del administrador actual
     const secondaryApp = initializeApp(firebaseConfig, "secondary-" + Date.now());
@@ -156,33 +220,34 @@
       const cred = await createUserWithEmailAndPassword(secondaryAuth, email, password);
       await setDoc(doc(db, "usuarios", cred.user.uid), {
         nombre,
-        rol: "encargado",
+        rol,
         obrasAsignadas
       });
       await signOut(secondaryAuth);
       await deleteApp(secondaryApp);
 
-      okMsg.textContent = `Creado. Usuario: ${email} · Contraseña: ${password} (guárdalos para dárselos al encargado)`;
+      okMsg.textContent = `Creado como ${rol}. Usuario: ${email} · Contraseña: ${password} (guárdalos para dárselos a esta persona)`;
       okMsg.style.display = "block";
       document.getElementById("createForm").reset();
       passwordInput.value = generarPassword();
       emailPreview.value = "";
+      obrasWrapper.style.display = "block";
       cargarUsuarios();
     } catch (err) {
       errorMsg.textContent = err.code === "auth/email-already-in-use"
-        ? "Ya existe un encargado con ese nombre. Cambia el nombre o edita el usuario existente."
-        : "No se ha podido crear el encargado.";
+        ? "Ya existe un usuario con ese nombre. Cambia el nombre o edita el usuario existente."
+        : "No se ha podido crear el usuario.";
       errorMsg.style.display = "block";
       await deleteApp(secondaryApp);
     } finally {
       createBtn.disabled = false;
-      createBtn.textContent = "Crear encargado";
+      createBtn.textContent = "Crear usuario";
     }
   });
 
   requireAuth((user, perfil) => {
     if (perfil.rol !== "admin") {
-      alert("Solo un administrador puede gestionar encargados.");
+      alert("Solo un administrador puede gestionar usuarios.");
       window.location.href = "dashboard.html";
       return;
     }
