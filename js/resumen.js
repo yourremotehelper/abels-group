@@ -3,11 +3,22 @@ import {
   collection, getDocs, query, where
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
-function fechaHace7Dias() {
+function inicioSemana(offsetSemanas) {
   const d = new Date();
-  d.setDate(d.getDate() - 6); // hoy incluido = últimos 7 días
+  const diaSemana = (d.getDay() + 6) % 7; // lunes = 0
+  d.setDate(d.getDate() - diaSemana + offsetSemanas * 7);
+  d.setHours(0, 0, 0, 0);
+  return d;
+}
+
+function aTexto(d) {
   const pad = n => String(n).padStart(2, "0");
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+function aTextoCorto(d) {
+  const pad = n => String(n).padStart(2, "0");
+  return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}`;
 }
 
 function minutos(horaTexto) {
@@ -15,14 +26,22 @@ function minutos(horaTexto) {
   return h * 60 + m;
 }
 
-export async function renderResumen(container, obraId) {
+export async function renderResumen(container, obraId, offsetSemanas = 0) {
   container.innerHTML = '<div class="loading">Calculando resumen...</div>';
 
   try {
-    const limite = fechaHace7Dias();
+    const inicio = inicioSemana(offsetSemanas);
+    const fin = new Date(inicio);
+    fin.setDate(fin.getDate() + 6);
+    const limite = aTexto(inicio);
+    const limiteFin = aTexto(fin);
 
     const [fichajesSnap, necesidadesSnap, gastosSnap] = await Promise.all([
-      getDocs(query(collection(db, "obras", obraId, "fichajes"), where("fecha", ">=", limite))),
+      getDocs(query(
+        collection(db, "obras", obraId, "fichajes"),
+        where("fecha", ">=", limite),
+        where("fecha", "<=", limiteFin)
+      )),
       getDocs(collection(db, "obras", obraId, "necesidades")),
       getDocs(collection(db, "obras", obraId, "gastos"))
     ]);
@@ -57,7 +76,11 @@ export async function renderResumen(container, obraId) {
 
     container.innerHTML = `
       <div class="card">
-        <p style="font-size:13px;color:var(--text-secondary);margin:0 0 12px;">Resumen de los últimos 7 días</p>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+          <button id="semanaAnterior" class="icon-btn" style="width:32px;height:32px;" title="Semana anterior" aria-label="Semana anterior">&#8249;</button>
+          <p style="font-size:13px;color:var(--text-secondary);margin:0;text-align:center;">${offsetSemanas === 0 ? "Esta semana" : "Semana"} · ${aTextoCorto(inicio)} - ${aTextoCorto(fin)}</p>
+          <button id="semanaSiguiente" class="icon-btn" style="width:32px;height:32px;${offsetSemanas >= 0 ? "opacity:0.3;pointer-events:none;" : ""}" title="Semana siguiente" aria-label="Semana siguiente">&#8250;</button>
+        </div>
         <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:10px;">
           <div style="background:var(--bg);border-radius:8px;padding:10px;">
             <p style="font-size:12px;color:var(--text-muted);margin:0 0 4px;">Asistencia</p>
@@ -82,6 +105,13 @@ export async function renderResumen(container, obraId) {
         </div>
       </div>
     `;
+
+    document.getElementById("semanaAnterior").addEventListener("click", () => {
+      renderResumen(container, obraId, offsetSemanas - 1);
+    });
+    document.getElementById("semanaSiguiente").addEventListener("click", () => {
+      if (offsetSemanas < 0) renderResumen(container, obraId, offsetSemanas + 1);
+    });
   } catch (err) {
     console.error(err);
     container.innerHTML = `<div class="card"><div class="placeholder">No se ha podido cargar el resumen.<br><span style="font-size:11px;">${err.message || err}</span></div></div>`;
