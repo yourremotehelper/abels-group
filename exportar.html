@@ -6,6 +6,7 @@
 <title>Abel's | Exportar fichajes</title>
 <link rel="manifest" href="manifest.json">
 <link rel="stylesheet" href="css/styles.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 </head>
 <body>
 <div class="screen">
@@ -33,7 +34,7 @@
     <label for="hasta">Hasta</label>
     <input type="date" id="hasta">
 
-    <button id="descargarBtn" class="primary" style="margin-top:6px;">Descargar CSV</button>
+    <button id="descargarBtn" class="primary" style="margin-top:6px;">Descargar Excel</button>
     <p id="resultadoTxt" style="font-size:12px;color:var(--text-muted);margin:10px 0 0;"></p>
   </div>
 </div>
@@ -148,10 +149,10 @@
       }
 
       const cabecera = ["Obra", "Empleado", "Fecha", "Hora entrada", "Hora salida", "Horas trabajadas", "Ubicación entrada", "Ubicación salida"];
-      const lineas = [cabecera.map(csvEscape).join(";")];
+      const datos = [cabecera];
 
       filas.forEach(f => {
-        lineas.push([
+        datos.push([
           f.obra,
           f.empleadoNombre || "",
           f.fecha || "",
@@ -160,19 +161,18 @@
           horasEntreHoras(f.horaEntrada, f.horaSalida),
           ubicacionTexto(f.gpsEntrada),
           ubicacionTexto(f.gpsSalida)
-        ].map(csvEscape).join(";"));
+        ]);
       });
 
-      const csv = "\uFEFF" + lineas.join("\r\n");
-      const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `fichajes_${obraId ? nombreObra(obraId).replace(/\s+/g, "_") : "todas_las_obras"}_${desde}_a_${hasta}.csv`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      URL.revokeObjectURL(url);
+      const hoja = XLSX.utils.aoa_to_sheet(datos);
+      hoja["!cols"] = [
+        { wch: 22 }, { wch: 18 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 14 }, { wch: 22 }, { wch: 22 }
+      ];
+      const libro = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(libro, hoja, "Fichajes");
+
+      const nombreArchivo = `fichajes_${obraId ? nombreObra(obraId).replace(/\s+/g, "_") : "todas_las_obras"}_${desde}_a_${hasta}.xlsx`;
+      XLSX.writeFile(libro, nombreArchivo);
 
       resultadoTxt.textContent = `${filas.length} fichajes descargados.`;
     } catch (err) {
@@ -181,7 +181,7 @@
       errorMsg.style.display = "block";
     } finally {
       descargarBtn.disabled = false;
-      descargarBtn.textContent = "Descargar CSV";
+      descargarBtn.textContent = "Descargar Excel";
     }
   });
 
