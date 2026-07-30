@@ -121,7 +121,7 @@ export async function renderFichaje(container, obraId) {
           horaEntrada: horaAhora(),
           gpsEntrada: gps
         }, { merge: true });
-        fichajes[empId] = { horaEntrada: horaAhora(), fecha };
+        fichajes[empId] = { horaEntrada: horaAhora(), fecha, gpsEntrada: gps };
         pintar();
       });
     });
@@ -138,6 +138,7 @@ export async function renderFichaje(container, obraId) {
           gpsSalida: gps
         }, { merge: true });
         fichajes[empId].horaSalida = horaAhora();
+        fichajes[empId].gpsSalida = gps;
         pintar();
       });
     });
