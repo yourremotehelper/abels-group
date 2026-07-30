@@ -37,6 +37,7 @@
   import { requireAuth, logout } from "./js/auth.js";
   import { renderFichaje } from "./js/fichaje.js";
   import { renderNecesidades } from "./js/necesidades.js";
+  import { renderResumen } from "./js/resumen.js";
 
   const obraTitle = document.getElementById("obraTitle");
   const tabContent = document.getElementById("tabContent");
@@ -59,11 +60,10 @@
 
   requireAuth((user, perfil) => {
     obraTitle.textContent = obraActual.nombre || "Obra";
+    renderResumen(tabContent, obraActual.id);
   });
 
-  const placeholders = {
-    resumen: "Resumen semanal — se construye en el siguiente paso."
-  };
+  const placeholders = {};
 
   tabs.forEach(tab => {
     tab.addEventListener("click", () => {
@@ -74,8 +74,8 @@
         renderFichaje(tabContent, obraActual.id);
       } else if (key === "necesita") {
         renderNecesidades(tabContent, obraActual.id);
-      } else {
-        tabContent.innerHTML = `<div class="card"><div class="placeholder">${placeholders[key]}</div></div>`;
+      } else if (key === "resumen") {
+        renderResumen(tabContent, obraActual.id);
       }
     });
   });
