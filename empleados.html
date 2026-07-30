@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Abel's | Empleados</title>
+<link rel="manifest" href="manifest.json">
+<link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+<div class="screen">
+  <div class="topbar">
+    <button class="icon-btn" id="backBtn" title="Volver" aria-label="Volver">&#8592;</button>
+    <div class="topbar-info">
+      <p class="topbar-obra">Directorio</p>
+      <p class="topbar-title">Empleados</p>
+    </div>
+  </div>
+
+  <div class="card">
+    <h1 style="font-size:16px;margin-bottom:14px;">Añadir empleado</h1>
+    <div class="error-msg" id="errorMsg"></div>
+
+    <form id="createForm">
+      <label for="nombre">Nombre</label>
+      <input type="text" id="nombre" required placeholder="Marc Vidal">
+
+      <label for="categoria">Categoría</label>
+      <input type="text" id="categoria" placeholder="Oficial, peón, electricista...">
+
+      <label for="telefono">Teléfono</label>
+      <input type="text" id="telefono" placeholder="600 000 000">
+
+      <label for="obraSelect">Obra asignada</label>
+      <select id="obraSelect" style="width:100%;height:44px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);padding:0 12px;margin-bottom:14px;">
+        <option value="">Sin asignar</option>
+      </select>
+
+      <button type="submit" class="primary" id="createBtn">Añadir a la ficha</button>
+    </form>
+  </div>
+
+  <div class="card">
+    <h1 style="font-size:16px;margin-bottom:10px;">Todos los empleados</h1>
+    <div id="empleadosList"><div class="loading">Cargando...</div></div>
+  </div>
+</div>
+
+<script type="module">
+  import { requireAuth } from "./js/auth.js";
+  import { db } from "./js/firebase-config.js";
+  import {
+    collection, getDocs, addDoc, doc, updateDoc, deleteDoc
+  } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+  const errorMsg = document.getElementById("errorMsg");
+  const createBtn = document.getElementById("createBtn");
+  const obraSelect = document.getElementById("obraSelect");
+  const empleadosList = document.getElementById("empleadosList");
+
+  document.getElementById("backBtn").addEventListener("click", () => {
+    window.location.href = "dashboard.html";
+  });
+
+  let obras = [];
+
+  function nombreObra(id) {
+    const o = obras.find(o => o.id === id);
+    return o ? o.nombre : "Sin asignar";
+  }
+
+  function opcionesObras(seleccionada) {
+    let html = `<option value="" ${!seleccionada ? "selected" : ""}>Sin asignar</option>`;
+    obras.forEach(o => {
+      html += `<option value="${o.id}" ${seleccionada === o.id ? "selected" : ""}>${o.nombre}</option>`;
+    });
+    return html;
+  }
+
+  async function cargarObras() {
+    const snap = await getDocs(collection(db, "obras"));
+    obras = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    obraSelect.innerHTML = opcionesObras("");
+  }
+
+  async function cargarEmpleados() {
+    const snap = await getDocs(collection(db, "empleados"));
+    const empleados = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+      .sort((a, b) => (a.nombre || "").localeCompare(b.nombre || ""));
+
+    if (empleados.length === 0) {
+      empleadosList.innerHTML = '<div class="placeholder">Todavía no hay empleados.</div>';
+      return;
+    }
+
+    empleadosList.innerHTML = "";
+    empleados.forEach(emp => {
+      const item = document.createElement("div");
+      item.className = "obra-item";
+      item.style.alignItems = "flex-start";
+      item.innerHTML = `
+        <div>
+          <p class="obra-name">${emp.nombre || "Sin nombre"}</p>
+          <p class="obra-meta">${emp.categoria || "Sin categoría"} · ${emp.telefono || "sin teléfono"}</p>
+          <p class="obra-meta">Obra: ${nombreObra(emp.obraAsignada)}</p>
+        </div>
+        <div style="display:flex;gap:6px;">
+          <button class="icon-btn btn-editar" title="Editar" aria-label="Editar" style="width:32px;height:32px;font-size:14px;">&#9998;</button>
+          <button class="icon-btn btn-borrar" title="Borrar" aria-label="Borrar" style="width:32px;height:32px;font-size:14px;">&#128465;</button>
+        </div>
+      `;
+
+      item.querySelector(".btn-borrar").addEventListener("click", async () => {
+        if (!confirm(`¿Quitar a ${emp.nombre} del directorio? No borra su historial de fichajes ya guardados.`)) return;
+        await deleteDoc(doc(db, "empleados", emp.id));
+        cargarEmpleados();
+      });
+
+      item.querySelector(".btn-editar").addEventListener("click", () => {
+        item.innerHTML = `
+          <div style="flex:1;">
+            <input type="text" class="edit-nombre" value="${emp.nombre || ""}" style="margin-bottom:8px;">
+            <input type="text" class="edit-categoria" value="${emp.categoria || ""}" placeholder="Categoría" style="margin-bottom:8px;">
+            <input type="text" class="edit-telefono" value="${emp.telefono || ""}" placeholder="Teléfono" style="margin-bottom:8px;">
+            <select class="edit-obra" style="width:100%;height:44px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);padding:0 12px;margin-bottom:10px;">
+              ${opcionesObras(emp.obraAsignada)}
+            </select>
+            <button class="primary btn-guardar" style="height:38px;">Guardar</button>
+          </div>
+        `;
+        item.querySelector(".btn-guardar").addEventListener("click", async () => {
+          const nuevoNombre = item.querySelector(".edit-nombre").value.trim();
+          if (!nuevoNombre) return;
+          await updateDoc(doc(db, "empleados", emp.id), {
+            nombre: nuevoNombre,
+            categoria: item.querySelector(".edit-categoria").value.trim(),
+            telefono: item.querySelector(".edit-telefono").value.trim(),
+            obraAsignada: item.querySelector(".edit-obra").value
+          });
+          cargarEmpleados();
+        });
+      });
+
+      empleadosList.appendChild(item);
+    });
+  }
+
+  document.getElementById("createForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    errorMsg.style.display = "none";
+    createBtn.disabled = true;
+    createBtn.textContent = "Añadiendo...";
+
+    const nombre = document.getElementById("nombre").value.trim();
+    const categoria = document.getElementById("categoria").value.trim();
+    const telefono = document.getElementById("telefono").value.trim();
+    const obraAsignada = obraSelect.value;
+
+    try {
+      await addDoc(collection(db, "empleados"), { nombre, categoria, telefono, obraAsignada, activo: true });
+      document.getElementById("createForm").reset();
+      obraSelect.innerHTML = opcionesObras("");
+      cargarEmpleados();
+    } catch (err) {
+      errorMsg.textContent = "No se ha podido añadir el empleado.";
+      errorMsg.style.display = "block";
+    } finally {
+      createBtn.disabled = false;
+      createBtn.textContent = "Añadir a la ficha";
+    }
+  });
+
+  requireAuth(async () => {
+    await cargarObras();
+    cargarEmpleados();
+  });
+</script>
+</body>
+</html>
