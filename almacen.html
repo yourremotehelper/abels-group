@@ -43,7 +43,8 @@
     collection, getDocs, query, where, doc, setDoc, deleteDoc, serverTimestamp
   } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
   import {
-    fechaLocal, horaLocal, fechaBonita, puedeGestionarFichajes, registrarHistorial, esc, avatar
+    fechaLocal, horaLocal, fechaBonita, puedeGestionarFichajes, registrarHistorial, esc, avatar,
+    cargarAusenciasDelDia, TIPOS_AUSENCIA
   } from "./js/registro.js";
 
   const lista = document.getElementById("lista");
@@ -60,6 +61,7 @@
   let obras = [];
   let empleados = [];
   let vehiculos = [];
+  let ausencias = {};         // empleadoId -> ausencia de hoy
   const cocheElegido = {};    // empleadoId -> vehiculoId elegido antes de fichar
   const fichados = {};        // empleadoId -> { obraId, ...datos del fichaje }
   const obraElegida = {};     // empleadoId -> obraId elegida en el desplegable
@@ -81,11 +83,13 @@
   }
 
   async function cargar() {
-    const [obrasSnap, empSnap, vehSnap] = await Promise.all([
+    const [obrasSnap, empSnap, vehSnap, aus] = await Promise.all([
       getDocs(collection(db, "obras")),
       getDocs(collection(db, "empleados")),
-      getDocs(collection(db, "vehiculos"))
+      getDocs(collection(db, "vehiculos")),
+      cargarAusenciasDelDia(fecha)
     ]);
+    ausencias = aus;
     vehiculos = vehSnap.docs.map(d => ({ id: d.id, ...d.data() }))
       .sort((a, b) => (a.nombre || "").localeCompare(b.nombre || ""));
     obras = obrasSnap.docs.map(d => ({ id: d.id, ...d.data() }))
@@ -137,8 +141,9 @@
   }
 
   function pintar() {
-    const total = empleados.length;
-    const hechos = empleados.filter(e => fichados[e.id]).length;
+    const esperados = empleados.filter(e => !ausencias[e.id] || fichados[e.id]);
+    const total = esperados.length;
+    const hechos = esperados.filter(e => fichados[e.id]).length;
     contador.textContent = `${hechos} / ${total}`;
 
     const texto = buscador.value.trim().toLowerCase();
@@ -154,10 +159,23 @@
     }
 
     // Primero los que faltan por entrar, después los que ya han entrado
-    visibles.sort((a, b) => (fichados[a.id] ? 1 : 0) - (fichados[b.id] ? 1 : 0));
+    const orden = e => fichados[e.id] ? 1 : ausencias[e.id] ? 2 : 0;
+    visibles.sort((a, b) => orden(a) - orden(b));
 
     lista.innerHTML = visibles.map(e => {
       const f = fichados[e.id];
+      const a = ausencias[e.id];
+      if (!f && a) {
+        return `
+          <div class="obra-item" style="cursor:default;gap:10px;opacity:0.65;">
+            ${avatar(e, 40)}
+            <div style="flex:1;min-width:0;">
+              <p class="obra-name">${esc(e.nombre)}</p>
+              <p class="obra-meta">${esc(TIPOS_AUSENCIA[a.tipo] || "Ausente")}${a.hasta && a.hasta !== fecha ? " hasta el " + fechaBonita(a.hasta) : ""}</p>
+            </div>
+            <span class="chip">No viene</span>
+          </div>`;
+      }
       if (f) {
         return `
           <div class="obra-item" style="cursor:default;gap:10px;">
