@@ -223,3 +223,59 @@ button.secondary {
   font-size: 14px;
   padding: 30px 0;
 }
+
+/* Campos de fecha, hora y número con el mismo aspecto que los de texto */
+input[type="date"],
+input[type="time"],
+input[type="number"],
+select.campo {
+  width: 100%;
+  height: 44px;
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 15px;
+  background: var(--bg);
+  color: var(--text);
+  margin-bottom: 14px;
+  font-family: inherit;
+}
+
+/* Etiquetas pequeñas de estado */
+.chip {
+  display: inline-block;
+  font-size: 12px;
+  padding: 3px 8px;
+  border-radius: 20px;
+  background: var(--border);
+  color: var(--text-secondary);
+}
+.chip.ok { background: var(--success-bg); color: var(--success-dark); }
+.chip.aviso { background: var(--accent-bg); color: var(--accent-dark); }
+
+/* Botón grande para fichar desde el almacén */
+.btn-grande {
+  min-width: 110px;
+  height: 48px;
+  border: none;
+  border-radius: 10px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 0 16px;
+}
+.btn-grande:disabled { opacity: 0.6; }
+
+.link-btn {
+  border: none;
+  background: none;
+  color: var(--accent-dark);
+  font-size: 12px;
+  cursor: pointer;
+  padding: 0;
+  text-decoration: underline;
+}
+
+.dashboard-menu { display: grid; gap: 10px; margin-bottom: 14px; }
