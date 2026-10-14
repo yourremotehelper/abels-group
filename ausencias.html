@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Abel's | Ausencias</title>
+<link rel="manifest" href="manifest.json">
+<link rel="stylesheet" href="css/styles.css">
+<style>
+  .par { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .par > div { min-width: 0; }
+  .fila-sf { display: flex; align-items: center; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--border); }
+  .fila-sf:last-child { border-bottom: none; }
+  .fila-sf select { margin: 0; height: 36px; font-size: 13px; }
+  .aus-item { display: flex; justify-content: space-between; gap: 10px; align-items: flex-start; padding: 10px 0; border-bottom: 1px solid var(--border); }
+  .aus-item:last-child { border-bottom: none; }
+  .chip.mal { background: var(--danger-bg); color: var(--danger); }
+</style>
+</head>
+<body>
+<div class="screen">
+  <div class="topbar">
+    <button class="icon-btn" id="backBtn" title="Volver" aria-label="Volver">&#8592;</button>
+    <div class="topbar-info">
+      <p class="topbar-obra">Oficina</p>
+      <p class="topbar-title">Ausencias</p>
+    </div>
+  </div>
+
+  <div class="card">
+    <h1 style="font-size:16px;margin-bottom:4px;">Sin fichar y sin motivo</h1>
+    <p style="font-size:12px;color:var(--text-muted);margin:0 0 10px;">Trabajadores que no tienen fichaje ni ausencia ese día. Asigna el motivo para que no quede ninguna falta sin registrar.</p>
+    <input type="date" id="diaSinFichar">
+    <div id="sinFichar"><div class="loading">Cargando...</div></div>
+  </div>
+
+  <div class="card">
+    <h1 style="font-size:16px;margin-bottom:14px;">Apuntar ausencia</h1>
+    <div class="error-msg" id="errorMsg"></div>
+    <label for="empSel">Trabajador</label>
+    <select id="empSel" class="campo"></select>
+    <label for="tipoSel">Motivo</label>
+    <select id="tipoSel" class="campo"></select>
+    <div class="par">
+      <div><label for="desde">Desde</label><input type="date" id="desde"></div>
+      <div><label for="hasta">Hasta (incluido)</label><input type="date" id="hasta"></div>
+    </div>
+    <label for="nota">Nota (opcional)</label>
+    <input type="text" id="nota" placeholder="Ej.: trae justificante el lunes">
+    <button class="primary" id="addBtn">Guardar ausencia</button>
+  </div>
+
+  <div class="card">
+    <h1 style="font-size:16px;margin-bottom:10px;">Ausencias actuales y próximas</h1>
+    <div id="lista"><div class="loading">Cargando...</div></div>
+  </div>
+</div>
+
+<script type="module">
+  import { requireAuth } from "./js/auth.js";
+  import { db, auth } from "./js/firebase-config.js";
+  import {
+    collection, getDocs, addDoc, deleteDoc, doc, query, where, serverTimestamp
+  } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+  import {
+    fechaLocal, horaLocal, fechaBonita, puedeGestionarFichajes, esc, avatar,
+    TIPOS_AUSENCIA, AUSENCIA_JUSTIFICADA, cargarAusenciasDelDia
+  } from "./js/registro.js";
+
+  const $ = id => document.getElementById(id);
+  $("backBtn").addEventListener("click", () => window.location.href = "dashboard.html");
+
+  let perfil = null;
+  let empleados = [];
+  let obras = [];
+
+  const opcionesTipo = (sel = "") => Object.entries(TIPOS_AUSENCIA)
+    .map(([k, v]) => `<option value="${k}" ${k === sel ? "selected" : ""}>${esc(v)}</option>`).join("");
+
+  function chipTipo(t) {
+    return `<span class="chip ${AUSENCIA_JUSTIFICADA(t) ? "" : "mal"}">${esc(TIPOS_AUSENCIA[t] || t)}</span>`;
+  }
+
+  async function guardarAusencia(datos) {
+    await addDoc(collection(db, "ausencias"), {
+      ...datos,
+      creadoPorUid: auth.currentUser ? auth.currentUser.uid : "",
+      creadoPorNombre: perfil.nombre || "",
+      creadoEn: `${fechaLocal()} ${horaLocal()}`,
+      registradoEn: serverTimestamp()
+    });
+  }
+
+  async function pintarSinFichar() {
+    const cont = $("sinFichar");
+    cont.innerHTML = '<div class="loading">Cargando...</div>';
+    const fecha = $("diaSinFichar").value;
+    const dia = new Date(fecha + "T12:00:00").getDay();
+
+    const [ausencias, ...snaps] = await Promise.all([
+      cargarAusenciasDelDia(fecha),
+      ...obras.map(o => getDocs(query(collection(db, "obras", o.id, "fichajes"), where("fecha", "==", fecha))))
+    ]);
+    const fichados = new Set();
+    const noConfirmados = [];
+    snaps.forEach((s, i) => s.forEach(d => {
+      const f = d.data();
+      fichados.add(f.empleadoId);
+      if (f.presenciaConfirmada === false) noConfirmados.push({ ...f, obra: obras[i].nombre });
+    }));
+
+    const pendientes = empleados.filter(e => !fichados.has(e.id) && !ausencias[e.id]);
+    const ausentes = empleados.filter(e => ausencias[e.id]);
+
+    let html = "";
+    if (dia === 0 || dia === 6) {
+      html += '<p style="font-size:13px;color:var(--text-muted);margin:0 0 8px;">Es fin de semana: lo normal es que no haya fichajes.</p>';
+    }
+    if (pendientes.length === 0) {
+      html += '<div class="placeholder" style="padding:16px 0;">Todos tienen fichaje o motivo de ausencia.</div>';
+    } else {
+      html += pendientes.map(e => `
+        <div class="fila-sf">
+          ${avatar(e, 36)}
+          <div style="flex:1;min-width:0;"><p class="obra-name" style="font-size:14px;">${esc(e.nombre)}</p></div>
+          <select class="campo sel-tipo" data-emp="${e.id}" style="width:auto;max-width:150px;">
+            <option value="">Motivo...</option>${opcionesTipo()}
+          </select>
+        </div>`).join("");
+    }
+    if (noConfirmados.length) {
+      html += `<div class="error-msg" style="display:block;margin:12px 0 0;">
+        <b>Entrada fichada pero el encargado dice que no estuvo en la obra:</b><br>
+        ${noConfirmados.map(f => `${esc(f.empleadoNombre)} (${esc(f.obra)}, entrada ${esc(f.horaEntrada || "")}, cerrado por ${esc(f.cerradoPorNombre || "?")})`).join("<br>")}
+        <br><span style="font-size:12px;">Revísalo y corrígelo en "Registro manual y correcciones".</span>
+      </div>`;
+    }
+    if (ausentes.length) {
+      html += `<p style="font-size:12px;color:var(--text-muted);margin:12px 0 4px;">Ausentes con motivo: ${ausentes.map(e => esc(e.nombre) + " (" + esc(TIPOS_AUSENCIA[ausencias[e.id].tipo] || "") + ")").join(", ")}</p>`;
+    }
+    cont.innerHTML = html;
+
+    cont.querySelectorAll(".sel-tipo").forEach(sel => sel.addEventListener("change", async () => {
+      if (!sel.value) return;
+      const e = empleados.find(x => x.id === sel.dataset.emp);
+      sel.disabled = true;
+      try {
+        await guardarAusencia({ empleadoId: e.id, empleadoNombre: e.nombre, tipo: sel.value, desde: fecha, hasta: fecha, nota: "" });
+        await Promise.all([pintarSinFichar(), pintarLista()]);
+      } catch (err) {
+        console.error(err);
+        alert("No se ha podido guardar. Inténtalo otra vez.");
+        sel.disabled = false;
+      }
+    }));
+  }
+
+  async function pintarLista() {
+    const hoy = fechaLocal();
+    const snap = await getDocs(query(collection(db, "ausencias"), where("hasta", ">=", hoy)));
+    const items = snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => a.desde.localeCompare(b.desde));
+    const lista = $("lista");
+    if (items.length === 0) {
+      lista.innerHTML = '<div class="placeholder" style="padding:16px 0;">No hay ausencias desde hoy en adelante.</div>';
+      return;
+    }
+    lista.innerHTML = items.map(a => `
+      <div class="aus-item">
+        <div style="min-width:0;">
+          <p class="obra-name" style="font-size:14px;">${esc(a.empleadoNombre)} ${chipTipo(a.tipo)}</p>
+          <p class="obra-meta">${a.desde === a.hasta ? fechaBonita(a.desde) : `Del ${fechaBonita(a.desde)} al ${fechaBonita(a.hasta)}`}${a.nota ? " · " + esc(a.nota) : ""}</p>
+          <p class="obra-meta">Apuntada por ${esc(a.creadoPorNombre || "?")}</p>
+        </div>
+        <button class="link-btn btn-quitar" data-id="${a.id}" style="color:var(--danger);">quitar</button>
+      </div>`).join("");
+    lista.querySelectorAll(".btn-quitar").forEach(b => b.addEventListener("click", async () => {
+      const a = items.find(x => x.id === b.dataset.id);
+      if (!confirm(`¿Quitar la ausencia de ${a.empleadoNombre}?`)) return;
+      await deleteDoc(doc(db, "ausencias", a.id));
+      await Promise.all([pintarLista(), pintarSinFichar()]);
+    }));
+  }
+
+  $("addBtn").addEventListener("click", async () => {
+    $("errorMsg").style.display = "none";
+    const e = empleados.find(x => x.id === $("empSel").value);
+    const desde = $("desde").value;
+    const hasta = $("hasta").value || desde;
+    const fallo = !e ? "Elige el trabajador." : !desde ? "Pon la fecha de inicio." : hasta < desde ? "La fecha final es anterior a la de inicio." : "";
+    if (fallo) { $("errorMsg").textContent = fallo; $("errorMsg").style.display = "block"; return; }
+    $("addBtn").disabled = true;
+    try {
+      await guardarAusencia({ empleadoId: e.id, empleadoNombre: e.nombre, tipo: $("tipoSel").value, desde, hasta, nota: $("nota").value.trim() });
+      $("nota").value = "";
+      $("empSel").value = "";
+      await Promise.all([pintarLista(), pintarSinFichar()]);
+    } catch (err) {
+      console.error(err);
+      $("errorMsg").textContent = "No se ha podido guardar. Revisa la conexión.";
+      $("errorMsg").style.display = "block";
+    } finally {
+      $("addBtn").disabled = false;
+    }
+  });
+
+  $("desde").addEventListener("change", () => { if (!$("hasta").value || $("hasta").value < $("desde").value) $("hasta").value = $("desde").value; });
+  $("diaSinFichar").addEventListener("change", pintarSinFichar);
+
+  requireAuth(async (user, p) => {
+    if (!puedeGestionarFichajes(p)) {
+      alert("Esta pantalla es solo para oficina y administración.");
+      window.location.href = "dashboard.html";
+      return;
+    }
+    perfil = p;
+    const [empSnap, obrasSnap] = await Promise.all([getDocs(collection(db, "empleados")), getDocs(collection(db, "obras"))]);
+    empleados = empSnap.docs.map(d => ({ id: d.id, ...d.data() })).filter(e => e.activo !== false)
+      .sort((a, b) => (a.nombre || "").localeCompare(b.nombre || ""));
+    obras = obrasSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+    $("empSel").innerHTML = '<option value="">Elegir trabajador...</option>' + empleados.map(e => `<option value="${e.id}">${esc(e.nombre)}</option>`).join("");
+    $("tipoSel").innerHTML = opcionesTipo("vacaciones");
+    $("diaSinFichar").value = fechaLocal();
+    $("desde").value = fechaLocal();
+    $("hasta").value = fechaLocal();
+    await Promise.all([pintarSinFichar(), pintarLista()]);
+  });
+</script>
+</body>
+</html>
