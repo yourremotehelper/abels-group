@@ -81,9 +81,14 @@
     if (puedeGestionarFichajes(perfil)) {
       boton("Fichaje en almacén (entradas de hoy)", "almacen.html", true);
       boton("Registro manual y correcciones", "registro.html");
+      boton("Ausencias y sin fichar", "ausencias.html");
+      boton("Horas extra del año", "horas-extra.html");
       boton("Exportar fichajes", "exportar.html");
     }
     boton("Directorio de empleados", "empleados.html");
+    if (puedeGestionarFichajes(perfil)) {
+      boton("Jornada y horas extra (ajustes)", "ajustes.html");
+    }
     if (esAdmin(perfil)) {
       boton("Gestionar obras", "obras.html");
       boton("Gestionar usuarios", "usuarios.html");
