@@ -55,7 +55,10 @@
   import {
     collection, getDocs, query, where
   } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
-  import { fechaLocal, fechaBonita, puedeGestionarFichajes } from "./js/registro.js";
+  import {
+    fechaLocal, fechaBonita, puedeGestionarFichajes, cargarConfig, horasTrabajadas, TIPOS_AUSENCIA
+  } from "./js/registro.js";
+  let cfg = null;
 
   const obraSelect = document.getElementById("obraSelect");
   const empleadoSelect = document.getElementById("empleadoSelect");
@@ -150,14 +153,33 @@
     }));
     filas.sort((a, b) => ((a.empleadoNombre || "") + a.fecha).localeCompare((b.empleadoNombre || "") + b.fecha));
 
-    if (filas.length === 0) {
-      resultadoTxt.textContent = "No hay fichajes con esos filtros.";
+    // Ausencias que se solapan con el rango (de los trabajadores de la obra elegida, si hay filtro de obra)
+    const ausSnap = await getDocs(query(collection(db, "ausencias"), where("desde", "<=", hasta)));
+    const ausencias = ausSnap.docs.map(d => d.data())
+      .filter(a => (a.hasta || a.desde) >= desde)
+      .filter(a => !empId || a.empleadoId === empId)
+      .filter(a => !obraId || (empleados.find(e => e.id === a.empleadoId) || {}).obraAsignada === obraId)
+      .sort((a, b) => (a.empleadoNombre + a.desde).localeCompare(b.empleadoNombre + b.desde));
+
+    if (filas.length === 0 && ausencias.length === 0) {
+      resultadoTxt.textContent = "No hay fichajes ni ausencias con esos filtros.";
       return null;
     }
+    filas.ausencias = ausencias;
     return filas;
   }
 
-  const cabecera = ["Trabajador", "Fecha", "Obra", "Entrada", "Salida", "Horas", "Conduce", "Registrado", "Registrado por", "Corregido", "Motivo corrección", "Ubicación entrada", "Ubicación salida"];
+  const cabeceraAus = ["Trabajador", "Motivo", "Justificada", "Desde", "Hasta", "Nota", "Apuntada por"];
+  const filaAus = a => [
+    a.empleadoNombre || "", TIPOS_AUSENCIA[a.tipo] || a.tipo, a.tipo === "injustificada" ? "No" : "Sí",
+    fechaBonita(a.desde), fechaBonita(a.hasta || a.desde), a.nota || "", a.creadoPorNombre || ""
+  ];
+
+  const trabajadas = f => horasTrabajadas(f.horaEntrada, f.horaSalida, cfg);
+  const extra = f => Number(f.horasExtra) || 0;
+  const num = n => n ? Math.round(n * 100) / 100 : "";
+
+  const cabecera = ["Trabajador", "Fecha", "Obra", "Entrada", "Salida", "Horas trabajadas", "Normales", "Extra", "Conduce", "Registrado", "Registrado por", "Corregido", "Motivo corrección", "Confirmado por encargado", "Ubicación entrada", "Ubicación salida"];
 
   function filaDatos(f) {
     return [
@@ -166,12 +188,15 @@
       f.obra,
       f.horaEntrada || "",
       f.horaSalida || "",
-      horasEntreHoras(f.horaEntrada, f.horaSalida),
+      num(trabajadas(f)),
+      num(Math.max(0, trabajadas(f) - extra(f))),
+      num(extra(f)),
       f.vehiculoNombre || "",
       origenTexto(f),
       f.fichadoPorNombre || "",
       f.modificado ? "Sí" : "",
       f.ultimaModificacion ? `${f.ultimaModificacion.motivo || ""} (${f.ultimaModificacion.porNombre || ""})` : "",
+      f.presenciaConfirmada === false ? "NO estuvo" : f.cerradoPorNombre ? "Sí (" + f.cerradoPorNombre + ")" : "",
       ubicacionTexto(f.gpsEntrada),
       ubicacionTexto(f.gpsSalida)
     ];
@@ -186,7 +211,10 @@
   }
 
   function totalHoras(filas) {
-    return filas.reduce((s, f) => s + (parseFloat(horasEntreHoras(f.horaEntrada, f.horaSalida)) || 0), 0).toFixed(2);
+    return filas.reduce((s, f) => s + trabajadas(f), 0).toFixed(2);
+  }
+  function totalExtra(filas) {
+    return filas.reduce((s, f) => s + extra(f), 0).toFixed(2);
   }
 
   async function ejecutar(btn, textoOriginal, accion) {
@@ -196,7 +224,7 @@
       const filas = await obtenerFilas();
       if (filas) {
         accion(filas);
-        resultadoTxt.textContent = `${filas.length} fichajes descargados · ${totalHoras(filas)} horas en total.`;
+        resultadoTxt.textContent = `${filas.length} fichajes · ${totalHoras(filas)} horas trabajadas (${totalExtra(filas)} extra) · ${filas.ausencias.length} ausencias.`;
       }
     } catch (err) {
       console.error(err);
@@ -212,11 +240,14 @@
     const datos = [cabecera, ...filas.map(filaDatos)];
     const hoja = XLSX.utils.aoa_to_sheet(datos);
     hoja["!cols"] = [
-      { wch: 20 }, { wch: 11 }, { wch: 20 }, { wch: 8 }, { wch: 8 }, { wch: 7 }, { wch: 22 },
-      { wch: 16 }, { wch: 16 }, { wch: 10 }, { wch: 28 }, { wch: 22 }, { wch: 22 }
+      { wch: 20 }, { wch: 11 }, { wch: 20 }, { wch: 8 }, { wch: 8 }, { wch: 10 }, { wch: 9 }, { wch: 7 }, { wch: 22 },
+      { wch: 16 }, { wch: 16 }, { wch: 10 }, { wch: 28 }, { wch: 18 }, { wch: 22 }, { wch: 22 }
     ];
     const libro = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(libro, hoja, "Fichajes");
+    const hojaAus = XLSX.utils.aoa_to_sheet([cabeceraAus, ...filas.ausencias.map(filaAus)]);
+    hojaAus["!cols"] = [{ wch: 20 }, { wch: 24 }, { wch: 11 }, { wch: 11 }, { wch: 11 }, { wch: 30 }, { wch: 16 }];
+    XLSX.utils.book_append_sheet(libro, hojaAus, "Ausencias");
     XLSX.writeFile(libro, nombreArchivo("xlsx"));
   }));
 
@@ -233,14 +264,24 @@
     pdf.text(titulo, 14, 14);
     pdf.setFontSize(9);
     pdf.text(filtros, 14, 20);
-    pdf.text(`Total: ${filas.length} fichajes · ${totalHoras(filas)} horas`, 14, 25);
+    pdf.text(`Total: ${filas.length} fichajes · ${totalHoras(filas)} horas trabajadas · ${totalExtra(filas)} horas extra · ${filas.ausencias.length} ausencias`, 14, 25);
+    const colsPdf = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 11, 13];
     pdf.autoTable({
       startY: 29,
-      head: [cabecera.slice(0, 11)],
-      body: filas.map(f => filaDatos(f).slice(0, 11)),
+      head: [colsPdf.map(i => cabecera[i])],
+      body: filas.map(f => { const d = filaDatos(f); return colsPdf.map(i => d[i]); }),
       styles: { fontSize: 7.5, cellPadding: 1.5 },
       headStyles: { fillColor: [216, 90, 48] }
     });
+    if (filas.ausencias.length) {
+      pdf.autoTable({
+        startY: pdf.lastAutoTable.finalY + 8,
+        head: [cabeceraAus],
+        body: filas.ausencias.map(filaAus),
+        styles: { fontSize: 7.5, cellPadding: 1.5 },
+        headStyles: { fillColor: [95, 94, 90] }
+      });
+    }
     pdf.save(nombreArchivo("pdf"));
   }));
 
@@ -250,7 +291,7 @@
       window.location.href = "dashboard.html";
       return;
     }
-    await cargarListas();
+    [cfg] = await Promise.all([cargarConfig(), cargarListas()]);
     desdeInput.value = inicioMes();
     hastaInput.value = fechaLocal();
   });
