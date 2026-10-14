@@ -279,3 +279,6 @@ select.campo {
 }
 
 .dashboard-menu { display: grid; gap: 10px; margin-bottom: 14px; }
+
+/* Las fechas y horas no deben salirse de su columna en móviles estrechos */
+input[type="date"], input[type="time"] { min-width: 0; max-width: 100%; }
