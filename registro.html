@@ -45,7 +45,7 @@
     </select>
     <input type="text" id="motivoOtro" placeholder="Escribe el motivo" style="display:none;">
 
-    <label>Jornada habitual (para el botón "jornada normal")</label>
+    <label>Jornada habitual para el botón "jornada normal" (se cambia en Ajustes)</label>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
       <input type="time" id="jornadaEntrada" value="08:00" style="margin-bottom:0;">
       <input type="time" id="jornadaSalida" value="17:00" style="margin-bottom:0;">
@@ -79,7 +79,8 @@
     collection, getDocs, query, where, doc, setDoc, deleteDoc, serverTimestamp
   } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
   import {
-    ayer, fechaBonita, puedeGestionarFichajes, registrarHistorial, esc, avatar
+    ayer, fechaBonita, puedeGestionarFichajes, registrarHistorial, esc, avatar,
+    cargarConfig, extraSugerida, horasTrabajadas, textoHoras, cargarAusenciasDelDia, TIPOS_AUSENCIA
   } from "./js/registro.js";
 
   const fechaInput = document.getElementById("fecha");
@@ -98,6 +99,8 @@
   let saliendo = false;
   let obras = [];
   let vehiculos = [];
+  let cfg = null;
+  let ausencias = {};
   let filas = [];   // { empId, nombre, existente: {obraId, docId, ...} | null, obraId, entrada, salida }
 
   document.getElementById("backBtn").addEventListener("click", () => {
@@ -106,14 +109,6 @@
     window.location.href = "dashboard.html";
   });
 
-  // Recordar la jornada habitual en este móvil (si el navegador lo permite)
-  try {
-    const guardada = JSON.parse(localStorage.getItem("jornadaHabitual") || "null");
-    if (guardada) { jornadaEntrada.value = guardada.e; jornadaSalida.value = guardada.s; }
-  } catch {}
-  [jornadaEntrada, jornadaSalida].forEach(i => i.addEventListener("change", () => {
-    try { localStorage.setItem("jornadaHabitual", JSON.stringify({ e: jornadaEntrada.value, s: jornadaSalida.value })); } catch {}
-  }));
 
   motivoSel.addEventListener("change", () => {
     motivoOtro.style.display = motivoSel.value === "otro" ? "block" : "none";
@@ -135,7 +130,7 @@
     const e = f.existente;
     if (!e) return !!(f.entrada || f.salida || f.vehiculoId);
     return f.obraId !== e.obraId || f.entrada !== (e.horaEntrada || "") || f.salida !== (e.horaSalida || "")
-      || f.vehiculoId !== (e.vehiculoId || "");
+      || f.vehiculoId !== (e.vehiculoId || "") || Number(f.extra || 0) !== Number(e.horasExtra || 0);
   }
 
   function hayCambios() { return filas.some(cambiada); }
@@ -151,11 +146,13 @@
     lista.innerHTML = '<div class="loading">Cargando...</div>';
     const fecha = fechaInput.value;
 
-    const [obrasSnap, empSnap, vehSnap] = await Promise.all([
+    const [obrasSnap, empSnap, vehSnap, aus] = await Promise.all([
       getDocs(collection(db, "obras")),
       getDocs(collection(db, "empleados")),
-      getDocs(collection(db, "vehiculos"))
+      getDocs(collection(db, "vehiculos")),
+      cargarAusenciasDelDia(fecha)
     ]);
+    ausencias = aus;
     vehiculos = vehSnap.docs.map(d => ({ id: d.id, ...d.data() }))
       .sort((a, b) => (a.nombre || "").localeCompare(b.nombre || ""));
     obras = obrasSnap.docs.map(d => ({ id: d.id, ...d.data() }))
@@ -184,7 +181,9 @@
         obraId: ex ? ex.obraId : (e.obraAsignada || ""),
         entrada: ex ? (ex.horaEntrada || "") : "",
         salida: ex ? (ex.horaSalida || "") : "",
-        vehiculoId: ex ? (ex.vehiculoId || "") : ""
+        vehiculoId: ex ? (ex.vehiculoId || "") : "",
+        extra: ex ? Number(ex.horasExtra || 0) : 0,
+        extraTocada: !!(ex && ex.horasExtra)
       };
     });
     // Fichajes de personas que ya no están en el directorio
@@ -192,7 +191,8 @@
       if (!filas.find(f => f.empId === ex.empleadoId)) {
         filas.push({ empId: ex.empleadoId, nombre: ex.empleadoNombre || "Sin nombre", existente: ex,
           obraId: ex.obraId, entrada: ex.horaEntrada || "", salida: ex.horaSalida || "",
-          emp: { nombre: ex.empleadoNombre }, carnet: !!ex.vehiculoId, vehiculoId: ex.vehiculoId || "" });
+          emp: { nombre: ex.empleadoNombre }, carnet: !!ex.vehiculoId, vehiculoId: ex.vehiculoId || "",
+          extra: Number(ex.horasExtra || 0), extraTocada: !!ex.horasExtra });
       }
     });
     filas.sort((a, b) => a.nombre.localeCompare(b.nombre));
@@ -223,10 +223,19 @@
     </select>`;
   }
 
+  function resumenFila(f) {
+    if (!f.entrada || !f.salida) return "";
+    const t = horasTrabajadas(f.entrada, f.salida, cfg);
+    return `${textoHoras(t)} trabajadas · ${textoHoras(Math.max(0, t - (Number(f.extra) || 0)))} normales`;
+  }
+
   function etiquetaEstado(f) {
     const e = f.existente;
+    const a = ausencias[f.empId];
+    if (!e && a) return `<span class="chip">${esc(TIPOS_AUSENCIA[a.tipo] || "Ausente")}</span>`;
     if (!e) return '<span class="chip">sin registro</span>';
-    const horas = `${e.horaEntrada || "--:--"} - ${e.horaSalida || "--:--"}`;
+    if (e.presenciaConfirmada === false) return '<span class="chip aviso">el encargado dice que no estuvo</span>';
+    const horas = `${e.horaEntrada || "--:--"} - ${e.horaSalida || "--:--"}${e.horasExtra ? " +" + e.horasExtra + " h extra" : ""}`;
     const extra = e.modificado ? " · corregido" : (e.origen === "manual" ? " · manual" : "");
     return `<span class="chip ok">${esc(horas)}${extra}</span>`;
   }
@@ -256,6 +265,8 @@
           <select class="campo c-obra">${opcionesObras(f.obraId)}</select>
           <input type="time" class="c-entrada" value="${esc(f.entrada)}" aria-label="Hora de entrada">
           <input type="time" class="c-salida" value="${esc(f.salida)}" aria-label="Hora de salida">
+          <input type="number" class="c-extra" value="${f.extra || ""}" min="0" max="12" step="0.5" inputmode="decimal" placeholder="Horas extra" aria-label="Horas extra">
+          <span class="c-res" style="font-size:12px;color:var(--text-muted);align-self:center;">${resumenFila(f)}</span>
           ${selectCoche(f)}
         </div>
         <div class="fila-acciones">
@@ -273,13 +284,28 @@
         actualizarBoton();
       };
       div.querySelector(".c-obra").addEventListener("change", e => { f.obraId = e.target.value; refrescar(); });
-      div.querySelector(".c-entrada").addEventListener("change", e => { f.entrada = e.target.value; refrescar(); });
-      div.querySelector(".c-salida").addEventListener("change", e => { f.salida = e.target.value; refrescar(); });
+      const extraIn = div.querySelector(".c-extra");
+      const res = div.querySelector(".c-res");
+      const recalcular = () => {
+        if (!f.extraTocada) { f.extra = extraSugerida(fechaInput.value, f.entrada, f.salida, cfg); extraIn.value = f.extra || ""; }
+        res.textContent = resumenFila(f);
+        refrescar();
+      };
+      div.querySelector(".c-entrada").addEventListener("change", e => { f.entrada = e.target.value; recalcular(); });
+      div.querySelector(".c-salida").addEventListener("change", e => { f.salida = e.target.value; recalcular(); });
+      extraIn.addEventListener("input", e => {
+        f.extra = Math.max(0, Number(e.target.value) || 0);
+        f.extraTocada = true;
+        res.textContent = resumenFila(f);
+        refrescar();
+      });
       const cCoche = div.querySelector(".c-coche");
       if (cCoche) cCoche.addEventListener("change", e => { f.vehiculoId = e.target.value; pintar(); });
       div.querySelector(".b-jornada").addEventListener("click", () => {
         f.entrada = jornadaEntrada.value;
         f.salida = jornadaSalida.value;
+        f.extraTocada = false;
+        f.extra = extraSugerida(fechaInput.value, f.entrada, f.salida, cfg);
         pintar();
       });
       const bDeshacer = div.querySelector(".b-deshacer");
@@ -289,6 +315,8 @@
         f.entrada = e ? (e.horaEntrada || "") : "";
         f.salida = e ? (e.horaSalida || "") : "";
         f.vehiculoId = e ? (e.vehiculoId || "") : "";
+        f.extra = e ? Number(e.horasExtra || 0) : 0;
+        f.extraTocada = !!(e && e.horasExtra);
         pintar();
       });
       const bBorrar = div.querySelector(".b-borrar");
@@ -352,7 +380,8 @@
           horaEntrada: f.entrada,
           horaSalida: f.salida || "",
           vehiculoId: f.vehiculoId || "",
-          vehiculoNombre: nombreVehiculo(f.vehiculoId)
+          vehiculoNombre: nombreVehiculo(f.vehiculoId),
+          horasExtra: f.salida ? (Number(f.extra) || 0) : 0
         };
 
         if (!e) {
@@ -385,6 +414,7 @@
             horaSalida: f.salida || "",
             vehiculoId: nuevo.vehiculoId,
             vehiculoNombre: nuevo.vehiculoNombre,
+            horasExtra: nuevo.horasExtra,
             modificado: true,
             ultimaModificacion: { ...quien, momento: new Date().toISOString() }
           }, { merge: true });
@@ -411,7 +441,7 @@
         historialDiv.innerHTML = '<div class="placeholder" style="padding:16px 0;">Sin cambios manuales este día.</div>';
         return;
       }
-      const horas = f => f ? `${f.horaEntrada || "--:--"}-${f.horaSalida || "--:--"} (${nombreObra(f.obraId)})${f.vehiculoNombre ? " · " + f.vehiculoNombre : ""}` : "—";
+      const horas = f => f ? `${f.horaEntrada || "--:--"}-${f.horaSalida || "--:--"}${f.horasExtra ? " +" + f.horasExtra + " h extra" : ""} (${nombreObra(f.obraId)})${f.vehiculoNombre ? " · " + f.vehiculoNombre : ""}` : "—";
       historialDiv.innerHTML = items.map(h => `
         <div class="hist-item">
           <b>${esc(h.momentoLocal || "")}</b> · ${esc(h.usuarioNombre || "?")}: ${esc(h.accion)} de <b>${esc(h.empleadoNombre)}</b><br>
@@ -447,6 +477,9 @@
       return;
     }
     perfil = p;
+    cfg = await cargarConfig();
+    jornadaEntrada.value = cfg.horaEntrada;
+    jornadaSalida.value = cfg.horaSalida;
     fechaInput.value = ayer();
     fechaAnterior = fechaInput.value;
     try {
