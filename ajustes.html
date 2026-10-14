@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Abel's | Jornada y horas extra</title>
+<link rel="manifest" href="manifest.json">
+<link rel="stylesheet" href="css/styles.css">
+<style>
+  .par { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .par > div { min-width: 0; }
+  .par input { margin-bottom: 14px; }
+  .ayuda { font-size: 12px; color: var(--text-muted); margin: -8px 0 14px; }
+</style>
+</head>
+<body>
+<div class="screen">
+  <div class="topbar">
+    <button class="icon-btn" id="backBtn" title="Volver" aria-label="Volver">&#8592;</button>
+    <div class="topbar-info">
+      <p class="topbar-obra">Oficina</p>
+      <p class="topbar-title">Jornada y horas extra</p>
+    </div>
+  </div>
+
+  <div class="error-msg" id="avisoProvisional" style="display:none;">
+    Estos valores son provisionales. Revísalos y pulsa "Guardar" para dejarlos configurados.
+  </div>
+  <div class="error-msg" id="okMsg" style="color:var(--success-dark);background:var(--success-bg);"></div>
+
+  <div class="card">
+    <h1 style="font-size:16px;margin-bottom:14px;">Horario habitual</h1>
+    <div class="par">
+      <div><label for="entrada">Entrada</label><input type="time" id="entrada"></div>
+      <div><label for="salida">Salida</label><input type="time" id="salida"></div>
+    </div>
+    <p class="ayuda">Se usa para rellenar la salida al cerrar la jornada y el botón "jornada normal".</p>
+
+    <label for="descanso">Descanso para comer (minutos)</label>
+    <input type="number" id="descanso" min="0" max="180" step="5">
+    <p class="ayuda">Se resta de las horas trabajadas cuando la jornada pasa de 6 horas. Pon 0 si no hay descanso o si ya se ficha la pausa.</p>
+
+    <div class="par">
+      <div><label for="horasLJ">Horas de lunes a jueves</label><input type="number" id="horasLJ" min="0" max="12" step="0.5"></div>
+      <div><label for="horasV">Horas los viernes</label><input type="number" id="horasV" min="0" max="12" step="0.5"></div>
+    </div>
+    <p class="ayuda">Lo que pase de estas horas se propone como horas extra (siempre se puede corregir). Sábados y domingos cuentan enteros como extra.</p>
+  </div>
+
+  <div class="card">
+    <h1 style="font-size:16px;margin-bottom:14px;">Límite de horas extra</h1>
+    <div class="par">
+      <div><label for="tope">Tope al año</label><input type="number" id="tope" min="0" step="1"></div>
+      <div><label for="aviso">Avisar a partir de</label><input type="number" id="aviso" min="0" step="1"></div>
+    </div>
+    <p class="ayuda">El tope legal general es de 80 horas al año (confirmadlo con la gestoría según el convenio). Al pasarlo, las extras se siguen apuntando pero quedan marcadas para revisarlas.</p>
+  </div>
+
+  <button class="primary" id="guardarBtn">Guardar</button>
+  <p id="ultimaTxt" style="font-size:12px;color:var(--text-muted);text-align:center;margin-top:10px;"></p>
+</div>
+
+<script type="module">
+  import { requireAuth } from "./js/auth.js";
+  import { db } from "./js/firebase-config.js";
+  import { doc, setDoc } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+  import { cargarConfig, puedeGestionarFichajes, fechaLocal, horaLocal } from "./js/registro.js";
+
+  const $ = id => document.getElementById(id);
+  $("backBtn").addEventListener("click", () => window.location.href = "dashboard.html");
+
+  let perfil = null;
+
+  function pintar(c) {
+    $("entrada").value = c.horaEntrada;
+    $("salida").value = c.horaSalida;
+    $("descanso").value = c.descansoMin;
+    $("horasLJ").value = c.horasLunesJueves;
+    $("horasV").value = c.horasViernes;
+    $("tope").value = c.topeAnualExtras;
+    $("aviso").value = c.avisoExtras;
+    $("avisoProvisional").style.display = c.configurada ? "none" : "block";
+    $("ultimaTxt").textContent = c.actualizadoPor ? `Última modificación: ${c.actualizadoPor}, ${c.actualizadoEn}` : "";
+  }
+
+  $("guardarBtn").addEventListener("click", async () => {
+    const num = id => Number($(id).value);
+    if (!$("entrada").value || !$("salida").value || $("salida").value <= $("entrada").value) {
+      alert("Revisa la hora de entrada y de salida.");
+      return;
+    }
+    const datos = {
+      horaEntrada: $("entrada").value,
+      horaSalida: $("salida").value,
+      descansoMin: num("descanso") || 0,
+      horasLunesJueves: num("horasLJ") || 0,
+      horasViernes: num("horasV") || 0,
+      topeAnualExtras: num("tope") || 0,
+      avisoExtras: num("aviso") || 0,
+      configurada: true,
+      actualizadoPor: perfil.nombre || "",
+      actualizadoEn: `${fechaLocal()} ${horaLocal()}`
+    };
+    $("guardarBtn").disabled = true;
+    try {
+      await setDoc(doc(db, "config", "jornada"), datos);
+      pintar(datos);
+      $("okMsg").textContent = "Guardado. Se aplica desde ahora; los fichajes ya guardados no cambian.";
+      $("okMsg").style.display = "block";
+    } catch (err) {
+      console.error(err);
+      alert("No se ha podido guardar. Revisa la conexión.");
+    } finally {
+      $("guardarBtn").disabled = false;
+    }
+  });
+
+  requireAuth(async (user, p) => {
+    if (!puedeGestionarFichajes(p)) {
+      alert("Esta pantalla es solo para oficina y administración.");
+      window.location.href = "dashboard.html";
+      return;
+    }
+    perfil = p;
+    pintar(await cargarConfig());
+  });
+</script>
+</body>
+</html>
