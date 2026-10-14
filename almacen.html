@@ -43,7 +43,7 @@
     collection, getDocs, query, where, doc, setDoc, deleteDoc, serverTimestamp
   } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
   import {
-    fechaLocal, horaLocal, fechaBonita, puedeGestionarFichajes, registrarHistorial, esc
+    fechaLocal, horaLocal, fechaBonita, puedeGestionarFichajes, registrarHistorial, esc, avatar
   } from "./js/registro.js";
 
   const lista = document.getElementById("lista");
@@ -59,6 +59,8 @@
   let perfil = null;
   let obras = [];
   let empleados = [];
+  let vehiculos = [];
+  const cocheElegido = {};    // empleadoId -> vehiculoId elegido antes de fichar
   const fichados = {};        // empleadoId -> { obraId, ...datos del fichaje }
   const obraElegida = {};     // empleadoId -> obraId elegida en el desplegable
 
@@ -79,10 +81,13 @@
   }
 
   async function cargar() {
-    const [obrasSnap, empSnap] = await Promise.all([
+    const [obrasSnap, empSnap, vehSnap] = await Promise.all([
       getDocs(collection(db, "obras")),
-      getDocs(collection(db, "empleados"))
+      getDocs(collection(db, "empleados")),
+      getDocs(collection(db, "vehiculos"))
     ]);
+    vehiculos = vehSnap.docs.map(d => ({ id: d.id, ...d.data() }))
+      .sort((a, b) => (a.nombre || "").localeCompare(b.nombre || ""));
     obras = obrasSnap.docs.map(d => ({ id: d.id, ...d.data() }))
       .sort((a, b) => (a.nombre || "").localeCompare(b.nombre || ""));
     empleados = empSnap.docs.map(d => ({ id: d.id, ...d.data() }))
@@ -110,6 +115,27 @@
       obras.map(o => `<option value="${o.id}" ${o.id === sel ? "selected" : ""}>${esc(o.nombre)}</option>`).join("");
   }
 
+  function nombreVehiculo(id) {
+    const v = vehiculos.find(v => v.id === id);
+    return v ? v.nombre + (v.matricula ? " (" + v.matricula + ")" : "") : "";
+  }
+
+  // Quién lleva ya cada coche hoy, para avisar si se elige dos veces
+  function conductorDe(vehId, salvoEmp) {
+    const e = empleados.find(e => e.id !== salvoEmp && fichados[e.id] && fichados[e.id].vehiculoId === vehId);
+    return e ? e.nombre : "";
+  }
+
+  function selectCoche(empId, sel, clase) {
+    if (vehiculos.length === 0) return "";
+    const opts = vehiculos.map(v => {
+      const otro = conductorDe(v.id, empId);
+      return `<option value="${v.id}" ${v.id === sel ? "selected" : ""}>${esc(v.nombre)}${otro ? " · lo lleva " + esc(otro) : ""}</option>`;
+    }).join("");
+    return `<select class="campo ${clase}" data-emp="${empId}" style="height:36px;font-size:13px;margin:6px 0 0;" aria-label="Coche que conduce">
+      <option value="" ${!sel ? "selected" : ""}>No conduce</option>${opts}</select>`;
+  }
+
   function pintar() {
     const total = empleados.length;
     const hechos = empleados.filter(e => fichados[e.id]).length;
@@ -135,9 +161,11 @@
       if (f) {
         return `
           <div class="obra-item" style="cursor:default;gap:10px;">
-            <div style="min-width:0;">
+            ${avatar(e, 44)}
+            <div style="flex:1;min-width:0;">
               <p class="obra-name">${esc(e.nombre)}</p>
               <p class="obra-meta">${esc(nombreObra(f.obraId))}${f.fichadoPorNombre ? " · fichado por " + esc(f.fichadoPorNombre) : ""}</p>
+              ${e.carnet ? selectCoche(e.id, f.vehiculoId || "", "sel-coche-fichado") : ""}
             </div>
             <div style="text-align:right;flex-shrink:0;">
               <span class="chip ok">&#10003; ${esc(f.horaEntrada)}</span>
@@ -147,11 +175,13 @@
       }
       return `
         <div class="obra-item" style="cursor:default;gap:10px;align-items:center;">
+          ${avatar(e, 52)}
           <div style="flex:1;min-width:0;">
             <p class="obra-name" style="font-size:16px;margin-bottom:6px;">${esc(e.nombre)}</p>
             <select class="campo sel-obra" data-emp="${e.id}" style="height:36px;font-size:13px;margin-bottom:0;">
               ${opcionesObras(obraElegida[e.id])}
             </select>
+            ${e.carnet ? selectCoche(e.id, cocheElegido[e.id] || "", "sel-coche") : ""}
           </div>
           <button class="btn-grande btn-entrada" data-emp="${e.id}">Entrada</button>
         </div>`;
@@ -159,6 +189,27 @@
 
     lista.querySelectorAll(".sel-obra").forEach(sel => {
       sel.addEventListener("change", () => { obraElegida[sel.dataset.emp] = sel.value; });
+    });
+
+    lista.querySelectorAll(".sel-coche").forEach(sel => {
+      sel.addEventListener("change", () => { cocheElegido[sel.dataset.emp] = sel.value; });
+    });
+
+    // Cambiar el coche después de fichar: se guarda al momento
+    lista.querySelectorAll(".sel-coche-fichado").forEach(sel => {
+      sel.addEventListener("change", async () => {
+        const empId = sel.dataset.emp;
+        const f = fichados[empId];
+        const datosCoche = { vehiculoId: sel.value, vehiculoNombre: nombreVehiculo(sel.value) };
+        try {
+          await setDoc(doc(db, "obras", f.obraId, "fichajes", f.docId), datosCoche, { merge: true });
+          Object.assign(f, datosCoche);
+          pintar();
+        } catch (err) {
+          console.error(err);
+          alert("No se ha podido guardar el coche. Inténtalo otra vez.");
+        }
+      });
     });
 
     lista.querySelectorAll(".btn-entrada").forEach(btn => {
@@ -189,6 +240,8 @@
       fecha,
       horaEntrada: hora,
       gpsEntrada: null,
+      vehiculoId: emp.carnet ? (cocheElegido[empId] || "") : "",
+      vehiculoNombre: emp.carnet ? nombreVehiculo(cocheElegido[empId]) : "",
       origen: "almacén",
       fichadoPorUid: auth.currentUser ? auth.currentUser.uid : "",
       fichadoPorNombre: perfil.nombre || "",
