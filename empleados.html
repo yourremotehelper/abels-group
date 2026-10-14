@@ -6,6 +6,15 @@
 <title>Abel's | Empleados</title>
 <link rel="manifest" href="manifest.json">
 <link rel="stylesheet" href="css/styles.css">
+<style>
+  .foto-picker { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }
+  .foto-picker input[type="file"] { display: none; }
+  .check-row { display: flex; align-items: center; gap: 8px; font-size: 14px; color: var(--text); margin-bottom: 10px; }
+  .check-row input { width: 20px; height: 20px; margin: 0; }
+  .emp-row { display: flex; gap: 12px; align-items: flex-start; }
+  .vehiculo-item { display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--border); font-size: 14px; }
+  .vehiculo-item:last-child { border-bottom: none; }
+</style>
 </head>
 <body>
 <div class="screen">
@@ -22,6 +31,12 @@
     <div class="error-msg" id="errorMsg"></div>
 
     <form id="createForm">
+      <div class="foto-picker">
+        <span id="fotoPreview"></span>
+        <label class="secondary" for="fotoInput" style="display:inline-flex;align-items:center;justify-content:center;height:40px;padding:0 14px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text);font-size:14px;margin:0;cursor:pointer;">Hacer o elegir foto</label>
+        <input type="file" id="fotoInput" accept="image/*" capture="user">
+      </div>
+
       <label for="nombre">Nombre</label>
       <input type="text" id="nombre" required placeholder="Marc Vidal">
 
@@ -31,8 +46,11 @@
       <label for="telefono">Teléfono</label>
       <input type="text" id="telefono" placeholder="600 000 000">
 
+      <label class="check-row" for="carnet"><input type="checkbox" id="carnet"> Tiene carnet de conducir</label>
+      <input type="text" id="carnetTipo" placeholder="Tipo de carnet (B, C...)" style="display:none;">
+
       <label for="obraSelect">Obra asignada</label>
-      <select id="obraSelect" style="width:100%;height:44px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);padding:0 12px;margin-bottom:14px;">
+      <select id="obraSelect" class="campo">
         <option value="">Sin asignar</option>
       </select>
 
@@ -42,11 +60,22 @@
 
   <div class="card">
     <h1 style="font-size:16px;margin-bottom:10px;">Todos los empleados</h1>
-    <input type="text" id="buscador" placeholder="Buscar por nombre..." style="margin-bottom:10px;">
-    <select id="filtroCategoria" style="width:100%;height:44px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);padding:0 12px;margin-bottom:14px;">
+    <input type="text" id="buscador" placeholder="Buscar por nombre...">
+    <select id="filtroCategoria" class="campo">
       <option value="">Todas las categorías</option>
     </select>
     <div id="empleadosList"><div class="loading">Cargando...</div></div>
+  </div>
+
+  <div class="card" id="vehiculosCard">
+    <h1 style="font-size:16px;margin-bottom:4px;">Vehículos de empresa</h1>
+    <p style="font-size:12px;color:var(--text-muted);margin:0 0 10px;">Aparecen al fichar para indicar quién conduce cada coche.</p>
+    <div id="vehiculosList"><div class="loading">Cargando...</div></div>
+    <div style="display:grid;grid-template-columns:1fr 1fr auto;gap:8px;margin-top:12px;">
+      <input type="text" id="vehNombre" placeholder="Furgoneta blanca" style="margin-bottom:0;">
+      <input type="text" id="vehMatricula" placeholder="Matrícula" style="margin-bottom:0;">
+      <button class="secondary" id="vehAddBtn" style="width:auto;padding:0 14px;height:44px;">Añadir</button>
+    </div>
   </div>
 </div>
 
@@ -56,6 +85,7 @@
   import {
     collection, getDocs, addDoc, doc, updateDoc, deleteDoc
   } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+  import { avatar, comprimirFoto, textoCarnet, esc, puedeGestionarFichajes } from "./js/registro.js";
 
   const errorMsg = document.getElementById("errorMsg");
   const createBtn = document.getElementById("createBtn");
@@ -63,14 +93,37 @@
   const empleadosList = document.getElementById("empleadosList");
   const buscador = document.getElementById("buscador");
   const filtroCategoria = document.getElementById("filtroCategoria");
+  const fotoInput = document.getElementById("fotoInput");
+  const fotoPreview = document.getElementById("fotoPreview");
+  const carnetCheck = document.getElementById("carnet");
+  const carnetTipo = document.getElementById("carnetTipo");
 
   let todosLosEmpleados = [];
+  let obras = [];
+  let vehiculos = [];
+  let fotoNueva = "";
+  let puedeEditarVehiculos = false;
 
   document.getElementById("backBtn").addEventListener("click", () => {
     window.location.href = "dashboard.html";
   });
 
-  let obras = [];
+  fotoPreview.innerHTML = avatar({ nombre: "?" }, 56);
+  fotoInput.addEventListener("change", async () => {
+    const f = fotoInput.files[0];
+    if (!f) return;
+    try {
+      fotoNueva = await comprimirFoto(f);
+      fotoPreview.innerHTML = avatar({ foto: fotoNueva }, 56);
+    } catch {
+      alert("No se ha podido usar esa foto. Prueba con otra.");
+    }
+    fotoInput.value = "";
+  });
+
+  carnetCheck.addEventListener("change", () => {
+    carnetTipo.style.display = carnetCheck.checked ? "block" : "none";
+  });
 
   function nombreObra(id) {
     const o = obras.find(o => o.id === id);
@@ -80,14 +133,15 @@
   function opcionesObras(seleccionada) {
     let html = `<option value="" ${!seleccionada ? "selected" : ""}>Sin asignar</option>`;
     obras.forEach(o => {
-      html += `<option value="${o.id}" ${seleccionada === o.id ? "selected" : ""}>${o.nombre}</option>`;
+      html += `<option value="${o.id}" ${seleccionada === o.id ? "selected" : ""}>${esc(o.nombre)}</option>`;
     });
     return html;
   }
 
   async function cargarObras() {
     const snap = await getDocs(collection(db, "obras"));
-    obras = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    obras = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+      .sort((a, b) => (a.nombre || "").localeCompare(b.nombre || ""));
     obraSelect.innerHTML = opcionesObras("");
   }
 
@@ -99,7 +153,7 @@
     const categorias = [...new Set(todosLosEmpleados.map(e => e.categoria).filter(Boolean))].sort();
     const categoriaActual = filtroCategoria.value;
     filtroCategoria.innerHTML = '<option value="">Todas las categorías</option>' +
-      categorias.map(c => `<option value="${c}" ${c === categoriaActual ? "selected" : ""}>${c}</option>`).join("");
+      categorias.map(c => `<option value="${esc(c)}" ${c === categoriaActual ? "selected" : ""}>${esc(c)}</option>`).join("");
 
     pintarLista();
   }
@@ -124,11 +178,17 @@
       const item = document.createElement("div");
       item.className = "obra-item";
       item.style.alignItems = "flex-start";
+      item.style.cursor = "default";
+      const carnet = textoCarnet(emp);
       item.innerHTML = `
-        <div>
-          <p class="obra-name">${emp.nombre || "Sin nombre"}</p>
-          <p class="obra-meta">${emp.categoria || "Sin categoría"} · ${emp.telefono ? `<a href="tel:${emp.telefono}" style="color:var(--accent-dark);">${emp.telefono}</a>` : "sin teléfono"}</p>
-          <p class="obra-meta">Obra: ${nombreObra(emp.obraAsignada)}</p>
+        <div class="emp-row">
+          ${avatar(emp, 48)}
+          <div style="min-width:0;">
+            <p class="obra-name">${esc(emp.nombre || "Sin nombre")}</p>
+            <p class="obra-meta">${esc(emp.categoria || "Sin categoría")} · ${emp.telefono ? `<a href="tel:${esc(emp.telefono)}" style="color:var(--accent-dark);">${esc(emp.telefono)}</a>` : "sin teléfono"}</p>
+            <p class="obra-meta">Obra: ${esc(nombreObra(emp.obraAsignada))}</p>
+            <p class="obra-meta">${carnet ? `<span class="chip ok">Carnet: ${esc(carnet)}</span>` : '<span class="chip">Sin carnet</span>'}</p>
+          </div>
         </div>
         <div style="display:flex;gap:6px;">
           <button class="icon-btn btn-editar" title="Editar" aria-label="Editar" style="width:32px;height:32px;font-size:14px;">&#9998;</button>
@@ -142,32 +202,70 @@
         cargarEmpleados();
       });
 
-      item.querySelector(".btn-editar").addEventListener("click", () => {
-        item.innerHTML = `
-          <div style="flex:1;">
-            <input type="text" class="edit-nombre" value="${emp.nombre || ""}" style="margin-bottom:8px;">
-            <input type="text" class="edit-categoria" value="${emp.categoria || ""}" placeholder="Categoría" style="margin-bottom:8px;">
-            <input type="text" class="edit-telefono" value="${emp.telefono || ""}" placeholder="Teléfono" style="margin-bottom:8px;">
-            <select class="edit-obra" style="width:100%;height:44px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);padding:0 12px;margin-bottom:10px;">
-              ${opcionesObras(emp.obraAsignada)}
-            </select>
-            <button class="primary btn-guardar" style="height:38px;">Guardar</button>
-          </div>
-        `;
-        item.querySelector(".btn-guardar").addEventListener("click", async () => {
-          const nuevoNombre = item.querySelector(".edit-nombre").value.trim();
-          if (!nuevoNombre) return;
-          await updateDoc(doc(db, "empleados", emp.id), {
-            nombre: nuevoNombre,
-            categoria: item.querySelector(".edit-categoria").value.trim(),
-            telefono: item.querySelector(".edit-telefono").value.trim(),
-            obraAsignada: item.querySelector(".edit-obra").value
-          });
-          cargarEmpleados();
-        });
-      });
+      item.querySelector(".btn-editar").addEventListener("click", () => abrirEdicion(item, emp));
 
       empleadosList.appendChild(item);
+    });
+  }
+
+  function abrirEdicion(item, emp) {
+    let fotoEditada = emp.foto || "";
+    const idf = "foto-" + emp.id;
+    item.innerHTML = `
+      <div style="flex:1;min-width:0;">
+        <div class="foto-picker">
+          <span class="edit-foto-prev">${avatar(emp, 56)}</span>
+          <label for="${idf}" style="display:inline-flex;align-items:center;height:38px;padding:0 12px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text);font-size:13px;margin:0;cursor:pointer;">Cambiar foto</label>
+          <input type="file" id="${idf}" accept="image/*" capture="user">
+          <button class="link-btn edit-quitar-foto" style="${emp.foto ? "" : "display:none;"}">quitar</button>
+        </div>
+        <input type="text" class="edit-nombre" value="${esc(emp.nombre || "")}" style="margin-bottom:8px;">
+        <input type="text" class="edit-categoria" value="${esc(emp.categoria || "")}" placeholder="Categoría" style="margin-bottom:8px;">
+        <input type="text" class="edit-telefono" value="${esc(emp.telefono || "")}" placeholder="Teléfono" style="margin-bottom:8px;">
+        <label class="check-row"><input type="checkbox" class="edit-carnet" ${emp.carnet ? "checked" : ""}> Tiene carnet de conducir</label>
+        <input type="text" class="edit-carnet-tipo" value="${esc(emp.carnetTipo || "")}" placeholder="Tipo de carnet (B, C...)" style="margin-bottom:8px;${emp.carnet ? "" : "display:none;"}">
+        <select class="campo edit-obra" style="margin-bottom:10px;">
+          ${opcionesObras(emp.obraAsignada)}
+        </select>
+        <button class="primary btn-guardar" style="height:38px;">Guardar</button>
+      </div>
+    `;
+    const fileIn = item.querySelector("#" + idf);
+    const prev = item.querySelector(".edit-foto-prev");
+    const quitar = item.querySelector(".edit-quitar-foto");
+    fileIn.addEventListener("change", async () => {
+      const f = fileIn.files[0];
+      if (!f) return;
+      try {
+        fotoEditada = await comprimirFoto(f);
+        prev.innerHTML = avatar({ foto: fotoEditada }, 56);
+        quitar.style.display = "";
+      } catch {
+        alert("No se ha podido usar esa foto. Prueba con otra.");
+      }
+    });
+    quitar.addEventListener("click", () => {
+      fotoEditada = "";
+      prev.innerHTML = avatar({ nombre: emp.nombre }, 56);
+      quitar.style.display = "none";
+    });
+    const chk = item.querySelector(".edit-carnet");
+    const tipo = item.querySelector(".edit-carnet-tipo");
+    chk.addEventListener("change", () => { tipo.style.display = chk.checked ? "block" : "none"; });
+
+    item.querySelector(".btn-guardar").addEventListener("click", async () => {
+      const nuevoNombre = item.querySelector(".edit-nombre").value.trim();
+      if (!nuevoNombre) return;
+      await updateDoc(doc(db, "empleados", emp.id), {
+        nombre: nuevoNombre,
+        categoria: item.querySelector(".edit-categoria").value.trim(),
+        telefono: item.querySelector(".edit-telefono").value.trim(),
+        obraAsignada: item.querySelector(".edit-obra").value,
+        carnet: chk.checked,
+        carnetTipo: chk.checked ? tipo.value.trim() : "",
+        foto: fotoEditada
+      });
+      cargarEmpleados();
     });
   }
 
@@ -177,14 +275,23 @@
     createBtn.disabled = true;
     createBtn.textContent = "Añadiendo...";
 
-    const nombre = document.getElementById("nombre").value.trim();
-    const categoria = document.getElementById("categoria").value.trim();
-    const telefono = document.getElementById("telefono").value.trim();
-    const obraAsignada = obraSelect.value;
+    const datos = {
+      nombre: document.getElementById("nombre").value.trim(),
+      categoria: document.getElementById("categoria").value.trim(),
+      telefono: document.getElementById("telefono").value.trim(),
+      obraAsignada: obraSelect.value,
+      carnet: carnetCheck.checked,
+      carnetTipo: carnetCheck.checked ? carnetTipo.value.trim() : "",
+      foto: fotoNueva,
+      activo: true
+    };
 
     try {
-      await addDoc(collection(db, "empleados"), { nombre, categoria, telefono, obraAsignada, activo: true });
+      await addDoc(collection(db, "empleados"), datos);
       document.getElementById("createForm").reset();
+      carnetTipo.style.display = "none";
+      fotoNueva = "";
+      fotoPreview.innerHTML = avatar({ nombre: "?" }, 56);
       obraSelect.innerHTML = opcionesObras("");
       cargarEmpleados();
     } catch (err) {
@@ -196,12 +303,51 @@
     }
   });
 
+  // ---- Vehículos de empresa ----
+  async function cargarVehiculos() {
+    const snap = await getDocs(collection(db, "vehiculos"));
+    vehiculos = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+      .sort((a, b) => (a.nombre || "").localeCompare(b.nombre || ""));
+    const lista = document.getElementById("vehiculosList");
+    if (vehiculos.length === 0) {
+      lista.innerHTML = '<p style="font-size:13px;color:var(--text-muted);margin:0;">Todavía no hay vehículos. Añade el primero abajo.</p>';
+      return;
+    }
+    lista.innerHTML = vehiculos.map(v => `
+      <div class="vehiculo-item">
+        <span>${esc(v.nombre)}${v.matricula ? ` <span style="color:var(--text-muted);">· ${esc(v.matricula)}</span>` : ""}</span>
+        ${puedeEditarVehiculos ? `<button class="link-btn btn-borrar-veh" data-id="${v.id}" style="color:var(--danger);">quitar</button>` : ""}
+      </div>
+    `).join("");
+    lista.querySelectorAll(".btn-borrar-veh").forEach(b => b.addEventListener("click", async () => {
+      const v = vehiculos.find(x => x.id === b.dataset.id);
+      if (!confirm(`¿Quitar ${v.nombre} de la lista? Los fichajes antiguos conservan el nombre del vehículo.`)) return;
+      await deleteDoc(doc(db, "vehiculos", v.id));
+      cargarVehiculos();
+    }));
+  }
+
+  document.getElementById("vehAddBtn").addEventListener("click", async () => {
+    const nombre = document.getElementById("vehNombre").value.trim();
+    const matricula = document.getElementById("vehMatricula").value.trim().toUpperCase();
+    if (!nombre) { document.getElementById("vehNombre").focus(); return; }
+    await addDoc(collection(db, "vehiculos"), { nombre, matricula });
+    document.getElementById("vehNombre").value = "";
+    document.getElementById("vehMatricula").value = "";
+    cargarVehiculos();
+  });
+
   buscador.addEventListener("input", pintarLista);
   filtroCategoria.addEventListener("change", pintarLista);
 
-  requireAuth(async () => {
+  requireAuth(async (user, perfil) => {
+    puedeEditarVehiculos = puedeGestionarFichajes(perfil);
+    if (!puedeEditarVehiculos) {
+      document.getElementById("vehAddBtn").parentElement.style.display = "none";
+    }
     await cargarObras();
     cargarEmpleados();
+    cargarVehiculos();
   });
 </script>
 </body>
