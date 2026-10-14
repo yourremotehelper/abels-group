@@ -1,0 +1,427 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Abel's | Registro manual</title>
+<link rel="manifest" href="manifest.json">
+<link rel="stylesheet" href="css/styles.css">
+<style>
+  .fila { padding: 12px 0; border-bottom: 1px solid var(--border); }
+  .fila:last-child { border-bottom: none; }
+  .fila.cambiada { background: var(--accent-bg); margin: 0 -16px; padding: 12px 16px; }
+  .fila-cab { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 8px; }
+  .fila-campos { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .fila-campos select { grid-column: 1 / -1; }
+  .fila-campos input, .fila-campos select { margin-bottom: 0; height: 40px; font-size: 14px; }
+  .fila-acciones { display: flex; gap: 14px; margin-top: 8px; }
+  .barra-guardar { position: sticky; bottom: 0; padding: 10px 0 14px; background: var(--bg); }
+  .hist-item { font-size: 13px; padding: 8px 0; border-bottom: 1px solid var(--border); color: var(--text-secondary); }
+  .hist-item:last-child { border-bottom: none; }
+  .hist-item b { color: var(--text); font-weight: 600; }
+</style>
+</head>
+<body>
+<div class="screen">
+  <div class="topbar">
+    <button class="icon-btn" id="backBtn" title="Volver" aria-label="Volver">&#8592;</button>
+    <div class="topbar-info">
+      <p class="topbar-obra">Oficina</p>
+      <p class="topbar-title">Registro manual y correcciones</p>
+    </div>
+  </div>
+
+  <div class="card">
+    <label for="fecha">Día</label>
+    <input type="date" id="fecha">
+
+    <label for="motivo">Motivo de los cambios</label>
+    <select id="motivo" class="campo">
+      <option value="Registro a día vencido">Registro a día vencido</option>
+      <option value="Olvido de fichaje">Olvido de fichaje</option>
+      <option value="Error de hora">Error de hora</option>
+      <option value="Error de obra">Error de obra</option>
+      <option value="otro">Otro (escribir)</option>
+    </select>
+    <input type="text" id="motivoOtro" placeholder="Escribe el motivo" style="display:none;">
+
+    <label>Jornada habitual (para el botón "jornada normal")</label>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+      <input type="time" id="jornadaEntrada" value="08:00" style="margin-bottom:0;">
+      <input type="time" id="jornadaSalida" value="17:00" style="margin-bottom:0;">
+    </div>
+  </div>
+
+  <div class="error-msg" id="errorMsg"></div>
+  <div class="error-msg" id="okMsg" style="color:var(--success-dark);background:var(--success-bg);"></div>
+
+  <input type="text" id="buscador" placeholder="Buscar trabajador..." autocomplete="off">
+
+  <div class="card" id="lista">
+    <div class="loading">Cargando...</div>
+  </div>
+
+  <div class="barra-guardar">
+    <button class="primary" id="guardarBtn" disabled>Guardar cambios</button>
+  </div>
+
+  <div class="card">
+    <h1 style="font-size:16px;margin-bottom:6px;">Historial de cambios de este día</h1>
+    <p style="font-size:12px;color:var(--text-muted);margin:0 0 8px;">Cada alta manual, corrección o borrado queda anotado aquí y no se puede eliminar.</p>
+    <div id="historial"><div class="loading">Cargando...</div></div>
+  </div>
+</div>
+
+<script type="module">
+  import { requireAuth } from "./js/auth.js";
+  import { db, auth } from "./js/firebase-config.js";
+  import {
+    collection, getDocs, query, where, doc, setDoc, deleteDoc, serverTimestamp
+  } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+  import {
+    ayer, fechaBonita, puedeGestionarFichajes, registrarHistorial, esc
+  } from "./js/registro.js";
+
+  const fechaInput = document.getElementById("fecha");
+  const motivoSel = document.getElementById("motivo");
+  const motivoOtro = document.getElementById("motivoOtro");
+  const jornadaEntrada = document.getElementById("jornadaEntrada");
+  const jornadaSalida = document.getElementById("jornadaSalida");
+  const lista = document.getElementById("lista");
+  const buscador = document.getElementById("buscador");
+  const guardarBtn = document.getElementById("guardarBtn");
+  const errorMsg = document.getElementById("errorMsg");
+  const okMsg = document.getElementById("okMsg");
+  const historialDiv = document.getElementById("historial");
+
+  let perfil = null;
+  let saliendo = false;
+  let obras = [];
+  let filas = [];   // { empId, nombre, existente: {obraId, docId, ...} | null, obraId, entrada, salida }
+
+  document.getElementById("backBtn").addEventListener("click", () => {
+    if (hayCambios() && !confirm("Hay cambios sin guardar. ¿Salir igualmente?")) return;
+    saliendo = true;
+    window.location.href = "dashboard.html";
+  });
+
+  // Recordar la jornada habitual en este móvil (si el navegador lo permite)
+  try {
+    const guardada = JSON.parse(localStorage.getItem("jornadaHabitual") || "null");
+    if (guardada) { jornadaEntrada.value = guardada.e; jornadaSalida.value = guardada.s; }
+  } catch {}
+  [jornadaEntrada, jornadaSalida].forEach(i => i.addEventListener("change", () => {
+    try { localStorage.setItem("jornadaHabitual", JSON.stringify({ e: jornadaEntrada.value, s: jornadaSalida.value })); } catch {}
+  }));
+
+  motivoSel.addEventListener("change", () => {
+    motivoOtro.style.display = motivoSel.value === "otro" ? "block" : "none";
+  });
+
+  function motivoActual() {
+    return motivoSel.value === "otro" ? motivoOtro.value.trim() : motivoSel.value;
+  }
+
+  function nombreObra(id) {
+    const o = obras.find(o => o.id === id);
+    return o ? o.nombre : "Sin obra";
+  }
+
+  function mostrar(el, txt) { el.textContent = txt; el.style.display = "block"; }
+  function ocultarMensajes() { errorMsg.style.display = "none"; okMsg.style.display = "none"; }
+
+  function cambiada(f) {
+    const e = f.existente;
+    if (!e) return !!(f.entrada || f.salida);
+    return f.obraId !== e.obraId || f.entrada !== (e.horaEntrada || "") || f.salida !== (e.horaSalida || "");
+  }
+
+  function hayCambios() { return filas.some(cambiada); }
+
+  function actualizarBoton() {
+    const n = filas.filter(cambiada).length;
+    guardarBtn.disabled = n === 0;
+    guardarBtn.textContent = n === 0 ? "Guardar cambios" : `Guardar cambios (${n})`;
+  }
+
+  async function cargar() {
+    ocultarMensajes();
+    lista.innerHTML = '<div class="loading">Cargando...</div>';
+    const fecha = fechaInput.value;
+
+    const [obrasSnap, empSnap] = await Promise.all([
+      getDocs(collection(db, "obras")),
+      getDocs(collection(db, "empleados"))
+    ]);
+    obras = obrasSnap.docs.map(d => ({ id: d.id, ...d.data() }))
+      .sort((a, b) => (a.nombre || "").localeCompare(b.nombre || ""));
+    const empleados = empSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+    const existentes = {};
+    const snaps = await Promise.all(obras.map(o =>
+      getDocs(query(collection(db, "obras", o.id, "fichajes"), where("fecha", "==", fecha)))
+        .then(s => ({ obraId: o.id, snap: s }))
+    ));
+    snaps.forEach(({ obraId, snap }) => snap.forEach(d => {
+      const f = d.data();
+      existentes[f.empleadoId] = { obraId, docId: d.id, ...f };
+    }));
+
+    const activos = empleados.filter(e => e.activo !== false);
+    filas = activos.map(e => {
+      const ex = existentes[e.id] || null;
+      return {
+        empId: e.id,
+        nombre: e.nombre || "Sin nombre",
+        existente: ex,
+        obraId: ex ? ex.obraId : (e.obraAsignada || ""),
+        entrada: ex ? (ex.horaEntrada || "") : "",
+        salida: ex ? (ex.horaSalida || "") : ""
+      };
+    });
+    // Fichajes de personas que ya no están en el directorio
+    Object.values(existentes).forEach(ex => {
+      if (!filas.find(f => f.empId === ex.empleadoId)) {
+        filas.push({ empId: ex.empleadoId, nombre: ex.empleadoNombre || "Sin nombre", existente: ex,
+          obraId: ex.obraId, entrada: ex.horaEntrada || "", salida: ex.horaSalida || "" });
+      }
+    });
+    filas.sort((a, b) => a.nombre.localeCompare(b.nombre));
+
+    pintar();
+    cargarHistorial();
+  }
+
+  function opcionesObras(sel) {
+    return `<option value="" ${!sel ? "selected" : ""}>Elegir obra...</option>` +
+      obras.map(o => `<option value="${o.id}" ${o.id === sel ? "selected" : ""}>${esc(o.nombre)}</option>`).join("");
+  }
+
+  function etiquetaEstado(f) {
+    const e = f.existente;
+    if (!e) return '<span class="chip">sin registro</span>';
+    const horas = `${e.horaEntrada || "--:--"} - ${e.horaSalida || "--:--"}`;
+    const extra = e.modificado ? " · corregido" : (e.origen === "manual" ? " · manual" : "");
+    return `<span class="chip ok">${esc(horas)}${extra}</span>`;
+  }
+
+  function pintar() {
+    const texto = buscador.value.trim().toLowerCase();
+    const visibles = filas.filter(f => !texto || f.nombre.toLowerCase().includes(texto));
+
+    if (filas.length === 0) {
+      lista.innerHTML = '<div class="placeholder">No hay trabajadores en el directorio.</div>';
+      actualizarBoton();
+      return;
+    }
+    if (visibles.length === 0) {
+      lista.innerHTML = '<div class="placeholder">Nadie coincide con la búsqueda.</div>';
+      actualizarBoton();
+      return;
+    }
+
+    lista.innerHTML = visibles.map(f => `
+      <div class="fila ${cambiada(f) ? "cambiada" : ""}" data-emp="${f.empId}">
+        <div class="fila-cab">
+          <p class="obra-name">${esc(f.nombre)}</p>
+          ${etiquetaEstado(f)}
+        </div>
+        <div class="fila-campos">
+          <select class="campo c-obra">${opcionesObras(f.obraId)}</select>
+          <input type="time" class="c-entrada" value="${esc(f.entrada)}" aria-label="Hora de entrada">
+          <input type="time" class="c-salida" value="${esc(f.salida)}" aria-label="Hora de salida">
+        </div>
+        <div class="fila-acciones">
+          <button class="link-btn b-jornada">jornada normal</button>
+          ${cambiada(f) ? '<button class="link-btn b-deshacer">deshacer cambios</button>' : ""}
+          ${f.existente ? '<button class="link-btn b-borrar" style="color:var(--danger);">borrar fichaje</button>' : ""}
+        </div>
+      </div>
+    `).join("");
+
+    lista.querySelectorAll(".fila").forEach(div => {
+      const f = filas.find(x => x.empId === div.dataset.emp);
+      const refrescar = () => {
+        div.classList.toggle("cambiada", cambiada(f));
+        actualizarBoton();
+      };
+      div.querySelector(".c-obra").addEventListener("change", e => { f.obraId = e.target.value; refrescar(); });
+      div.querySelector(".c-entrada").addEventListener("change", e => { f.entrada = e.target.value; refrescar(); });
+      div.querySelector(".c-salida").addEventListener("change", e => { f.salida = e.target.value; refrescar(); });
+      div.querySelector(".b-jornada").addEventListener("click", () => {
+        f.entrada = jornadaEntrada.value;
+        f.salida = jornadaSalida.value;
+        pintar();
+      });
+      const bDeshacer = div.querySelector(".b-deshacer");
+      if (bDeshacer) bDeshacer.addEventListener("click", () => {
+        const e = f.existente;
+        f.obraId = e ? e.obraId : f.obraId;
+        f.entrada = e ? (e.horaEntrada || "") : "";
+        f.salida = e ? (e.horaSalida || "") : "";
+        pintar();
+      });
+      const bBorrar = div.querySelector(".b-borrar");
+      if (bBorrar) bBorrar.addEventListener("click", () => borrar(f));
+    });
+
+    actualizarBoton();
+  }
+
+  async function borrar(f) {
+    ocultarMensajes();
+    const motivo = motivoActual();
+    if (!motivo) { mostrar(errorMsg, "Escribe el motivo antes de borrar."); return; }
+    if (!confirm(`¿Borrar el fichaje de ${f.nombre} del ${fechaBonita(fechaInput.value)}? Quedará anotado en el historial.`)) return;
+    const e = f.existente;
+    try {
+      await deleteDoc(doc(db, "obras", e.obraId, "fichajes", e.docId));
+      await registrarHistorial({
+        accion: "borrado", obraId: e.obraId, empleadoId: f.empId, empleadoNombre: f.nombre,
+        fecha: fechaInput.value, antes: e, despues: null, motivo, perfil
+      });
+      mostrar(okMsg, `Fichaje de ${f.nombre} borrado.`);
+      await cargar();
+    } catch (err) {
+      console.error(err);
+      mostrar(errorMsg, "No se ha podido borrar. Inténtalo otra vez.");
+    }
+  }
+
+  guardarBtn.addEventListener("click", async () => {
+    ocultarMensajes();
+    const motivo = motivoActual();
+    if (!motivo) { mostrar(errorMsg, "Escribe el motivo de los cambios."); return; }
+
+    const fecha = fechaInput.value;
+    const pendientes = filas.filter(cambiada);
+
+    // Comprobaciones antes de guardar nada
+    for (const f of pendientes) {
+      if (!f.obraId) { mostrar(errorMsg, `Falta elegir la obra de ${f.nombre}.`); return; }
+      if (!f.entrada) { mostrar(errorMsg, `Falta la hora de entrada de ${f.nombre}. Si no vino, deja sus horas vacías.`); return; }
+      if (f.salida && f.salida <= f.entrada) { mostrar(errorMsg, `La salida de ${f.nombre} es anterior a la entrada.`); return; }
+    }
+
+    guardarBtn.disabled = true;
+    guardarBtn.textContent = "Guardando...";
+    const quien = {
+      porUid: auth.currentUser ? auth.currentUser.uid : "",
+      porNombre: perfil.nombre || "",
+      motivo
+    };
+
+    try {
+      for (const f of pendientes) {
+        const e = f.existente;
+        const docId = `${fecha}_${f.empId}`;
+        const nuevo = {
+          empleadoId: f.empId,
+          empleadoNombre: f.nombre,
+          fecha,
+          horaEntrada: f.entrada,
+          horaSalida: f.salida || ""
+        };
+
+        if (!e) {
+          // Alta manual
+          await setDoc(doc(db, "obras", f.obraId, "fichajes", docId), {
+            ...nuevo,
+            origen: "manual",
+            fichadoPorUid: quien.porUid,
+            fichadoPorNombre: quien.porNombre,
+            registradoEn: serverTimestamp()
+          });
+          await registrarHistorial({ accion: "alta manual", obraId: f.obraId, empleadoId: f.empId, empleadoNombre: f.nombre,
+            fecha, antes: null, despues: { ...nuevo, obraId: f.obraId, origen: "manual" }, motivo, perfil });
+        } else if (e.obraId !== f.obraId) {
+          // Cambio de obra: se mueve el fichaje conservando su origen y ubicación
+          const { obraId: _o, docId: _d, ...datosAnteriores } = e;
+          await setDoc(doc(db, "obras", f.obraId, "fichajes", docId), {
+            ...datosAnteriores,
+            ...nuevo,
+            modificado: true,
+            ultimaModificacion: { ...quien, momento: new Date().toISOString() }
+          });
+          await deleteDoc(doc(db, "obras", e.obraId, "fichajes", e.docId));
+          await registrarHistorial({ accion: "cambio de obra", obraId: f.obraId, empleadoId: f.empId, empleadoNombre: f.nombre,
+            fecha, antes: e, despues: { ...nuevo, obraId: f.obraId }, motivo, perfil });
+        } else {
+          // Corrección de horas
+          await setDoc(doc(db, "obras", e.obraId, "fichajes", e.docId), {
+            horaEntrada: f.entrada,
+            horaSalida: f.salida || "",
+            modificado: true,
+            ultimaModificacion: { ...quien, momento: new Date().toISOString() }
+          }, { merge: true });
+          await registrarHistorial({ accion: "corrección", obraId: e.obraId, empleadoId: f.empId, empleadoNombre: f.nombre,
+            fecha, antes: e, despues: { ...nuevo, obraId: e.obraId }, motivo, perfil });
+        }
+      }
+      mostrar(okMsg, `${pendientes.length} cambio(s) guardado(s).`);
+      await cargar();
+    } catch (err) {
+      console.error(err);
+      mostrar(errorMsg, "Algo no se ha podido guardar. Revisa la lista y vuelve a intentarlo.");
+      actualizarBoton();
+    }
+  });
+
+  async function cargarHistorial() {
+    historialDiv.innerHTML = '<div class="loading">Cargando...</div>';
+    try {
+      const snap = await getDocs(query(collection(db, "historialFichajes"), where("fecha", "==", fechaInput.value)));
+      const items = snap.docs.map(d => d.data())
+        .sort((a, b) => (b.momentoLocal || "").localeCompare(a.momentoLocal || ""));
+      if (items.length === 0) {
+        historialDiv.innerHTML = '<div class="placeholder" style="padding:16px 0;">Sin cambios manuales este día.</div>';
+        return;
+      }
+      const horas = f => f ? `${f.horaEntrada || "--:--"}-${f.horaSalida || "--:--"} (${nombreObra(f.obraId)})` : "—";
+      historialDiv.innerHTML = items.map(h => `
+        <div class="hist-item">
+          <b>${esc(h.momentoLocal || "")}</b> · ${esc(h.usuarioNombre || "?")}: ${esc(h.accion)} de <b>${esc(h.empleadoNombre)}</b><br>
+          ${esc(horas(h.antes))} &#8594; ${esc(horas(h.despues))}<br>
+          <span style="color:var(--text-muted);">Motivo: ${esc(h.motivo || "—")}</span>
+        </div>
+      `).join("");
+    } catch (err) {
+      console.error(err);
+      historialDiv.innerHTML = '<div class="placeholder" style="padding:16px 0;">No se ha podido cargar el historial.</div>';
+    }
+  }
+
+  let fechaAnterior = "";
+  fechaInput.addEventListener("change", () => {
+    if (hayCambios() && !confirm("Hay cambios sin guardar en este día. ¿Cambiar de día igualmente?")) {
+      fechaInput.value = fechaAnterior;
+      return;
+    }
+    fechaAnterior = fechaInput.value;
+    cargar();
+  });
+  buscador.addEventListener("input", pintar);
+
+  window.addEventListener("beforeunload", e => {
+    if (!saliendo && hayCambios()) { e.preventDefault(); e.returnValue = ""; }
+  });
+
+  requireAuth(async (user, p) => {
+    if (!puedeGestionarFichajes(p)) {
+      alert("Esta pantalla es solo para oficina y administración.");
+      window.location.href = "dashboard.html";
+      return;
+    }
+    perfil = p;
+    fechaInput.value = ayer();
+    fechaAnterior = fechaInput.value;
+    try {
+      await cargar();
+    } catch (err) {
+      console.error(err);
+      lista.innerHTML = '<div class="placeholder">Error al cargar. Revisa la conexión y vuelve a entrar.</div>';
+    }
+  });
+</script>
+</body>
+</html>

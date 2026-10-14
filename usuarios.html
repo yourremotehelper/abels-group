@@ -36,6 +36,7 @@
       <label for="rolSelect">Tipo de usuario</label>
       <select id="rolSelect" style="width:100%;height:44px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);padding:0 12px;margin-bottom:14px;">
         <option value="encargado">Encargado (ve solo sus obras asignadas)</option>
+        <option value="oficina">Oficina (ficha por los trabajadores, corrige fichajes, exporta y consulta empleados)</option>
         <option value="admin">Administrador (ve todas las obras y puede gestionar usuarios y obras)</option>
       </select>
 
@@ -58,6 +59,7 @@
 
 <script type="module">
   import { requireAuth } from "./js/auth.js";
+  import { nombreRol } from "./js/registro.js";
   import { db, firebaseConfig } from "./js/firebase-config.js";
   import { initializeApp, deleteApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
   import {
@@ -103,7 +105,7 @@
   passwordInput.value = generarPassword();
 
   rolSelect.addEventListener("change", () => {
-    obrasWrapper.style.display = rolSelect.value === "admin" ? "none" : "block";
+    obrasWrapper.style.display = rolSelect.value === "encargado" ? "block" : "none";
   });
 
   let obras = [];
@@ -138,7 +140,7 @@
       item.innerHTML = `
         <div>
           <p class="obra-name">${u.nombre || "Sin nombre"}</p>
-          <p class="obra-meta">${u.rol}${u.rol === "encargado" ? " · " + (u.obrasAsignadas || []).length + " obra(s)" : ""}</p>
+          <p class="obra-meta">${nombreRol(u.rol)}${u.rol === "encargado" ? " · " + (u.obrasAsignadas || []).length + " obra(s)" : ""}</p>
         </div>
         <div style="display:flex;gap:6px;">
           <button class="icon-btn btn-editar-usuario" title="Editar" aria-label="Editar" style="width:32px;height:32px;font-size:14px;">&#9998;</button>
@@ -163,9 +165,10 @@
             <input type="text" class="edit-nombre" value="${u.nombre || ""}" style="margin-bottom:8px;">
             <select class="edit-rol" style="width:100%;height:44px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);padding:0 12px;margin-bottom:10px;">
               <option value="encargado" ${u.rol === "encargado" ? "selected" : ""}>Encargado</option>
+              <option value="oficina" ${u.rol === "oficina" ? "selected" : ""}>Oficina</option>
               <option value="admin" ${u.rol === "admin" ? "selected" : ""}>Administrador</option>
             </select>
-            <div class="edit-obras-wrapper" style="display:${u.rol === "admin" ? "none" : "block"};margin-bottom:10px;">
+            <div class="edit-obras-wrapper" style="display:${u.rol === "encargado" ? "block" : "none"};margin-bottom:10px;">
               ${obrasHtml}
             </div>
             <button class="primary btn-guardar-usuario" style="height:38px;">Guardar</button>
@@ -175,13 +178,13 @@
         const rolEdit = item.querySelector(".edit-rol");
         const obrasEdit = item.querySelector(".edit-obras-wrapper");
         rolEdit.addEventListener("change", () => {
-          obrasEdit.style.display = rolEdit.value === "admin" ? "none" : "block";
+          obrasEdit.style.display = rolEdit.value === "encargado" ? "block" : "none";
         });
 
         item.querySelector(".btn-guardar-usuario").addEventListener("click", async () => {
           const nuevoNombre = item.querySelector(".edit-nombre").value.trim();
           const nuevoRol = rolEdit.value;
-          const nuevasObras = nuevoRol === "admin"
+          const nuevasObras = nuevoRol !== "encargado"
             ? []
             : Array.from(item.querySelectorAll(".edit-obra-check:checked")).map(c => c.value);
           if (!nuevoNombre) return;
@@ -208,7 +211,7 @@
     const email = emailPreview.value;
     const password = passwordInput.value;
     const rol = rolSelect.value;
-    const obrasAsignadas = rol === "admin"
+    const obrasAsignadas = rol !== "encargado"
       ? []
       : Array.from(document.querySelectorAll(".obra-check:checked")).map(c => c.value);
 
@@ -226,7 +229,7 @@
       await signOut(secondaryAuth);
       await deleteApp(secondaryApp);
 
-      okMsg.textContent = `Creado como ${rol}. Usuario: ${email} · Contraseña: ${password} (guárdalos para dárselos a esta persona)`;
+      okMsg.textContent = `Creado como ${nombreRol(rol)}. Usuario: ${email} · Contraseña: ${password} (guárdalos para dárselos a esta persona)`;
       okMsg.style.display = "block";
       document.getElementById("createForm").reset();
       passwordInput.value = generarPassword();

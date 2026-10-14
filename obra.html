@@ -62,7 +62,9 @@
     window.location.href = "index.html";
   });
 
+  let perfilActual = {};
   requireAuth((user, perfil) => {
+    perfilActual = perfil;
     obraTitle.textContent = obraActual.nombre || "Obra";
     renderResumen(tabContent, obraActual.id);
   });
@@ -75,7 +77,7 @@
       tab.classList.add("active");
       const key = tab.dataset.tab;
       if (key === "fichaje") {
-        renderFichaje(tabContent, obraActual.id);
+        renderFichaje(tabContent, obraActual.id, perfilActual);
       } else if (key === "necesita") {
         renderNecesidades(tabContent, obraActual.id);
       } else if (key === "resumen") {

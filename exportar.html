@@ -7,25 +7,32 @@
 <link rel="manifest" href="manifest.json">
 <link rel="stylesheet" href="css/styles.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
 </head>
 <body>
 <div class="screen">
   <div class="topbar">
     <button class="icon-btn" id="backBtn" title="Volver" aria-label="Volver">&#8592;</button>
     <div class="topbar-info">
-      <p class="topbar-obra">Administración</p>
+      <p class="topbar-obra">Oficina</p>
       <p class="topbar-title">Exportar fichajes</p>
     </div>
   </div>
 
   <div class="card">
-    <p style="font-size:13px;color:var(--text-secondary);margin:0 0 16px;">Descarga el registro horario para una inspección de trabajo o para tus propios archivos.</p>
+    <p style="font-size:13px;color:var(--text-secondary);margin:0 0 16px;">Descarga el registro horario para una inspección de trabajo, para la gestoría o para tus propios archivos.</p>
 
     <div class="error-msg" id="errorMsg"></div>
 
     <label for="obraSelect">Obra</label>
-    <select id="obraSelect" style="width:100%;height:44px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);padding:0 12px;margin-bottom:14px;">
+    <select id="obraSelect" class="campo">
       <option value="">Todas las obras</option>
+    </select>
+
+    <label for="empleadoSelect">Trabajador</label>
+    <select id="empleadoSelect" class="campo">
+      <option value="">Todos los trabajadores</option>
     </select>
 
     <label for="desde">Desde</label>
@@ -34,7 +41,10 @@
     <label for="hasta">Hasta</label>
     <input type="date" id="hasta">
 
-    <button id="descargarBtn" class="primary" style="margin-top:6px;">Descargar Excel</button>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:6px;">
+      <button id="excelBtn" class="primary">Descargar Excel</button>
+      <button id="pdfBtn" class="secondary" style="height:46px;">Descargar PDF</button>
+    </div>
     <p id="resultadoTxt" style="font-size:12px;color:var(--text-muted);margin:10px 0 0;"></p>
   </div>
 </div>
@@ -43,13 +53,16 @@
   import { requireAuth } from "./js/auth.js";
   import { db } from "./js/firebase-config.js";
   import {
-    collection, collectionGroup, getDocs, query, where
+    collection, getDocs, query, where
   } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+  import { fechaLocal, fechaBonita, puedeGestionarFichajes } from "./js/registro.js";
 
   const obraSelect = document.getElementById("obraSelect");
+  const empleadoSelect = document.getElementById("empleadoSelect");
   const desdeInput = document.getElementById("desde");
   const hastaInput = document.getElementById("hasta");
-  const descargarBtn = document.getElementById("descargarBtn");
+  const excelBtn = document.getElementById("excelBtn");
+  const pdfBtn = document.getElementById("pdfBtn");
   const resultadoTxt = document.getElementById("resultadoTxt");
   const errorMsg = document.getElementById("errorMsg");
 
@@ -58,32 +71,32 @@
   });
 
   let obras = [];
-
-  function hoy() {
-    return new Date().toISOString().slice(0, 10);
-  }
+  let empleados = [];
 
   function inicioMes() {
     const d = new Date();
     d.setDate(1);
-    return d.toISOString().slice(0, 10);
+    return fechaLocal(d);
   }
 
-  async function cargarObras() {
-    const snap = await getDocs(collection(db, "obras"));
-    obras = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  async function cargarListas() {
+    const [obrasSnap, empSnap] = await Promise.all([
+      getDocs(collection(db, "obras")),
+      getDocs(collection(db, "empleados"))
+    ]);
+    obras = obrasSnap.docs.map(d => ({ id: d.id, ...d.data() }))
+      .sort((a, b) => (a.nombre || "").localeCompare(b.nombre || ""));
+    empleados = empSnap.docs.map(d => ({ id: d.id, ...d.data() }))
+      .sort((a, b) => (a.nombre || "").localeCompare(b.nombre || ""));
     obraSelect.innerHTML = '<option value="">Todas las obras</option>' +
       obras.map(o => `<option value="${o.id}">${o.nombre}</option>`).join("");
+    empleadoSelect.innerHTML = '<option value="">Todos los trabajadores</option>' +
+      empleados.map(e => `<option value="${e.id}">${e.nombre}</option>`).join("");
   }
 
   function nombreObra(id) {
     const o = obras.find(o => o.id === id);
     return o ? o.nombre : id;
-  }
-
-  function csvEscape(valor) {
-    const txt = String(valor ?? "");
-    return `"${txt.replace(/"/g, '""')}"`;
   }
 
   function horasEntreHoras(entrada, salida) {
@@ -99,101 +112,146 @@
     return gps ? `${gps.lat}, ${gps.lng}` : "";
   }
 
-  descargarBtn.addEventListener("click", async () => {
+  function origenTexto(f) {
+    if (f.origen === "almacén") return "Almacén";
+    if (f.origen === "manual") return "Manual (oficina)";
+    return "Obra";
+  }
+
+  // Devuelve las filas filtradas, o null si faltan datos
+  async function obtenerFilas() {
     errorMsg.style.display = "none";
-    const obraId = obraSelect.value;
+    resultadoTxt.textContent = "";
     const desde = desdeInput.value;
     const hasta = hastaInput.value;
-
     if (!desde || !hasta) {
       errorMsg.textContent = "Elige una fecha de inicio y de fin.";
       errorMsg.style.display = "block";
-      return;
+      return null;
     }
 
-    descargarBtn.disabled = true;
-    descargarBtn.textContent = "Preparando...";
-    resultadoTxt.textContent = "";
+    const obraId = obraSelect.value;
+    const empId = empleadoSelect.value;
+    const obrasAConsultar = obraId ? obras.filter(o => o.id === obraId) : obras;
 
+    const snaps = await Promise.all(obrasAConsultar.map(o =>
+      getDocs(query(
+        collection(db, "obras", o.id, "fichajes"),
+        where("fecha", ">=", desde),
+        where("fecha", "<=", hasta)
+      )).then(s => ({ obraId: o.id, snap: s }))
+    ));
+
+    const filas = [];
+    snaps.forEach(({ obraId: oid, snap }) => snap.forEach(d => {
+      const f = d.data();
+      if (empId && f.empleadoId !== empId) return;
+      filas.push({ obra: nombreObra(oid), ...f });
+    }));
+    filas.sort((a, b) => ((a.empleadoNombre || "") + a.fecha).localeCompare((b.empleadoNombre || "") + b.fecha));
+
+    if (filas.length === 0) {
+      resultadoTxt.textContent = "No hay fichajes con esos filtros.";
+      return null;
+    }
+    return filas;
+  }
+
+  const cabecera = ["Trabajador", "Fecha", "Obra", "Entrada", "Salida", "Horas", "Registrado", "Registrado por", "Corregido", "Motivo corrección", "Ubicación entrada", "Ubicación salida"];
+
+  function filaDatos(f) {
+    return [
+      f.empleadoNombre || "",
+      fechaBonita(f.fecha),
+      f.obra,
+      f.horaEntrada || "",
+      f.horaSalida || "",
+      horasEntreHoras(f.horaEntrada, f.horaSalida),
+      origenTexto(f),
+      f.fichadoPorNombre || "",
+      f.modificado ? "Sí" : "",
+      f.ultimaModificacion ? `${f.ultimaModificacion.motivo || ""} (${f.ultimaModificacion.porNombre || ""})` : "",
+      ubicacionTexto(f.gpsEntrada),
+      ubicacionTexto(f.gpsSalida)
+    ];
+  }
+
+  function nombreArchivo(ext) {
+    const partes = ["fichajes"];
+    partes.push(obraSelect.value ? nombreObra(obraSelect.value) : "todas_las_obras");
+    if (empleadoSelect.value) partes.push(empleadoSelect.selectedOptions[0].textContent);
+    partes.push(desdeInput.value, "a", hastaInput.value);
+    return partes.join("_").replace(/\s+/g, "_") + "." + ext;
+  }
+
+  function totalHoras(filas) {
+    return filas.reduce((s, f) => s + (parseFloat(horasEntreHoras(f.horaEntrada, f.horaSalida)) || 0), 0).toFixed(2);
+  }
+
+  async function ejecutar(btn, textoOriginal, accion) {
+    btn.disabled = true;
+    btn.textContent = "Preparando...";
     try {
-      let filas = [];
-
-      if (obraId) {
-        const snap = await getDocs(query(
-          collection(db, "obras", obraId, "fichajes"),
-          where("fecha", ">=", desde),
-          where("fecha", "<=", hasta)
-        ));
-        snap.forEach(d => {
-          const f = d.data();
-          filas.push({ obra: nombreObra(obraId), ...f });
-        });
-      } else {
-        const snap = await getDocs(query(
-          collectionGroup(db, "fichajes"),
-          where("fecha", ">=", desde),
-          where("fecha", "<=", hasta)
-        ));
-        snap.forEach(d => {
-          const f = d.data();
-          const obraIdDoc = d.ref.parent.parent.id;
-          filas.push({ obra: nombreObra(obraIdDoc), ...f });
-        });
+      const filas = await obtenerFilas();
+      if (filas) {
+        accion(filas);
+        resultadoTxt.textContent = `${filas.length} fichajes descargados · ${totalHoras(filas)} horas en total.`;
       }
-
-      filas.sort((a, b) => (a.fecha + a.empleadoNombre).localeCompare(b.fecha + b.empleadoNombre));
-
-      if (filas.length === 0) {
-        resultadoTxt.textContent = "No hay fichajes en ese rango de fechas.";
-        return;
-      }
-
-      const cabecera = ["Obra", "Empleado", "Fecha", "Hora entrada", "Hora salida", "Horas trabajadas", "Ubicación entrada", "Ubicación salida"];
-      const datos = [cabecera];
-
-      filas.forEach(f => {
-        datos.push([
-          f.obra,
-          f.empleadoNombre || "",
-          f.fecha || "",
-          f.horaEntrada || "",
-          f.horaSalida || "",
-          horasEntreHoras(f.horaEntrada, f.horaSalida),
-          ubicacionTexto(f.gpsEntrada),
-          ubicacionTexto(f.gpsSalida)
-        ]);
-      });
-
-      const hoja = XLSX.utils.aoa_to_sheet(datos);
-      hoja["!cols"] = [
-        { wch: 22 }, { wch: 18 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 14 }, { wch: 22 }, { wch: 22 }
-      ];
-      const libro = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(libro, hoja, "Fichajes");
-
-      const nombreArchivo = `fichajes_${obraId ? nombreObra(obraId).replace(/\s+/g, "_") : "todas_las_obras"}_${desde}_a_${hasta}.xlsx`;
-      XLSX.writeFile(libro, nombreArchivo);
-
-      resultadoTxt.textContent = `${filas.length} fichajes descargados.`;
     } catch (err) {
       console.error(err);
       errorMsg.textContent = "No se ha podido generar el archivo. " + (err.message || "");
       errorMsg.style.display = "block";
     } finally {
-      descargarBtn.disabled = false;
-      descargarBtn.textContent = "Descargar Excel";
+      btn.disabled = false;
+      btn.textContent = textoOriginal;
     }
-  });
+  }
+
+  excelBtn.addEventListener("click", () => ejecutar(excelBtn, "Descargar Excel", filas => {
+    const datos = [cabecera, ...filas.map(filaDatos)];
+    const hoja = XLSX.utils.aoa_to_sheet(datos);
+    hoja["!cols"] = [
+      { wch: 20 }, { wch: 11 }, { wch: 20 }, { wch: 8 }, { wch: 8 }, { wch: 7 },
+      { wch: 16 }, { wch: 16 }, { wch: 10 }, { wch: 28 }, { wch: 22 }, { wch: 22 }
+    ];
+    const libro = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(libro, hoja, "Fichajes");
+    XLSX.writeFile(libro, nombreArchivo("xlsx"));
+  }));
+
+  pdfBtn.addEventListener("click", () => ejecutar(pdfBtn, "Descargar PDF", filas => {
+    const { jsPDF } = window.jspdf;
+    const pdf = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
+    const titulo = "Registro de jornada · Abel's Construcciones & Reformas";
+    const filtros = [
+      obraSelect.value ? "Obra: " + nombreObra(obraSelect.value) : "Todas las obras",
+      empleadoSelect.value ? "Trabajador: " + empleadoSelect.selectedOptions[0].textContent : "Todos los trabajadores",
+      `Del ${fechaBonita(desdeInput.value)} al ${fechaBonita(hastaInput.value)}`
+    ].join("  ·  ");
+    pdf.setFontSize(13);
+    pdf.text(titulo, 14, 14);
+    pdf.setFontSize(9);
+    pdf.text(filtros, 14, 20);
+    pdf.text(`Total: ${filas.length} fichajes · ${totalHoras(filas)} horas`, 14, 25);
+    pdf.autoTable({
+      startY: 29,
+      head: [cabecera.slice(0, 10)],
+      body: filas.map(f => filaDatos(f).slice(0, 10)),
+      styles: { fontSize: 7.5, cellPadding: 1.5 },
+      headStyles: { fillColor: [216, 90, 48] }
+    });
+    pdf.save(nombreArchivo("pdf"));
+  }));
 
   requireAuth(async (user, perfil) => {
-    if (perfil.rol !== "admin") {
-      alert("Solo un administrador puede exportar fichajes.");
+    if (!puedeGestionarFichajes(perfil)) {
+      alert("Solo oficina y administración pueden exportar fichajes.");
       window.location.href = "dashboard.html";
       return;
     }
-    await cargarObras();
+    await cargarListas();
     desdeInput.value = inicioMes();
-    hastaInput.value = hoy();
+    hastaInput.value = fechaLocal();
   });
 </script>
 </body>

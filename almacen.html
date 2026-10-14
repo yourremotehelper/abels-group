@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Abel's | Fichaje almacén</title>
+<link rel="manifest" href="manifest.json">
+<link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+<div class="screen">
+  <div class="topbar">
+    <button class="icon-btn" id="backBtn" title="Volver" aria-label="Volver">&#8592;</button>
+    <div class="topbar-info">
+      <p class="topbar-obra" id="fechaTxt">Hoy</p>
+      <p class="topbar-title">Entrada en almacén</p>
+    </div>
+  </div>
+
+  <div class="card" style="padding:12px 16px;">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;">
+      <span style="font-size:14px;color:var(--text-secondary);">Han entrado</span>
+      <span id="contador" style="font-size:22px;font-weight:700;">0 / 0</span>
+    </div>
+  </div>
+
+  <input type="text" id="buscador" placeholder="Buscar trabajador..." autocomplete="off">
+
+  <div class="card" id="lista">
+    <div class="loading">Cargando trabajadores...</div>
+  </div>
+
+  <p style="font-size:12px;color:var(--text-muted);text-align:center;">
+    Toca "Entrada" cuando llegue cada trabajador. La salida la marca el encargado en la obra.<br>
+    Para apuntar horas de otro día o corregir errores, usa "Registro manual y correcciones".
+  </p>
+</div>
+
+<script type="module">
+  import { requireAuth } from "./js/auth.js";
+  import { db, auth } from "./js/firebase-config.js";
+  import {
+    collection, getDocs, query, where, doc, setDoc, deleteDoc, serverTimestamp
+  } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+  import {
+    fechaLocal, horaLocal, fechaBonita, puedeGestionarFichajes, registrarHistorial, esc
+  } from "./js/registro.js";
+
+  const lista = document.getElementById("lista");
+  const contador = document.getElementById("contador");
+  const buscador = document.getElementById("buscador");
+  const fecha = fechaLocal();
+  document.getElementById("fechaTxt").textContent = "Hoy, " + fechaBonita(fecha);
+
+  document.getElementById("backBtn").addEventListener("click", () => {
+    window.location.href = "dashboard.html";
+  });
+
+  let perfil = null;
+  let obras = [];
+  let empleados = [];
+  const fichados = {};        // empleadoId -> { obraId, ...datos del fichaje }
+  const obraElegida = {};     // empleadoId -> obraId elegida en el desplegable
+
+  function nombreObra(id) {
+    const o = obras.find(o => o.id === id);
+    return o ? o.nombre : "Sin obra";
+  }
+
+  function capturarGPS() {
+    return new Promise(resolve => {
+      if (!navigator.geolocation) { resolve(null); return; }
+      navigator.geolocation.getCurrentPosition(
+        pos => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+        () => resolve(null),
+        { timeout: 10000, enableHighAccuracy: true, maximumAge: 60000 }
+      );
+    });
+  }
+
+  async function cargar() {
+    const [obrasSnap, empSnap] = await Promise.all([
+      getDocs(collection(db, "obras")),
+      getDocs(collection(db, "empleados"))
+    ]);
+    obras = obrasSnap.docs.map(d => ({ id: d.id, ...d.data() }))
+      .sort((a, b) => (a.nombre || "").localeCompare(b.nombre || ""));
+    empleados = empSnap.docs.map(d => ({ id: d.id, ...d.data() }))
+      .filter(e => e.activo !== false)
+      .sort((a, b) => (a.nombre || "").localeCompare(b.nombre || ""));
+
+    // Fichajes de hoy en todas las obras (una consulta por obra)
+    const snaps = await Promise.all(obras.map(o =>
+      getDocs(query(collection(db, "obras", o.id, "fichajes"), where("fecha", "==", fecha)))
+        .then(s => ({ obraId: o.id, snap: s }))
+    ));
+    snaps.forEach(({ obraId, snap }) => {
+      snap.forEach(d => {
+        const f = d.data();
+        if (f.horaEntrada) fichados[f.empleadoId] = { obraId, docId: d.id, ...f };
+      });
+    });
+
+    empleados.forEach(e => { obraElegida[e.id] = e.obraAsignada || ""; });
+    pintar();
+  }
+
+  function opcionesObras(sel) {
+    return `<option value="" ${!sel ? "selected" : ""}>Elegir obra...</option>` +
+      obras.map(o => `<option value="${o.id}" ${o.id === sel ? "selected" : ""}>${esc(o.nombre)}</option>`).join("");
+  }
+
+  function pintar() {
+    const total = empleados.length;
+    const hechos = empleados.filter(e => fichados[e.id]).length;
+    contador.textContent = `${hechos} / ${total}`;
+
+    const texto = buscador.value.trim().toLowerCase();
+    const visibles = empleados.filter(e => !texto || (e.nombre || "").toLowerCase().includes(texto));
+
+    if (empleados.length === 0) {
+      lista.innerHTML = '<div class="placeholder">No hay trabajadores en el directorio. Añádelos en "Directorio de empleados".</div>';
+      return;
+    }
+    if (visibles.length === 0) {
+      lista.innerHTML = '<div class="placeholder">Nadie coincide con la búsqueda.</div>';
+      return;
+    }
+
+    // Primero los que faltan por entrar, después los que ya han entrado
+    visibles.sort((a, b) => (fichados[a.id] ? 1 : 0) - (fichados[b.id] ? 1 : 0));
+
+    lista.innerHTML = visibles.map(e => {
+      const f = fichados[e.id];
+      if (f) {
+        return `
+          <div class="obra-item" style="cursor:default;gap:10px;">
+            <div style="min-width:0;">
+              <p class="obra-name">${esc(e.nombre)}</p>
+              <p class="obra-meta">${esc(nombreObra(f.obraId))}${f.fichadoPorNombre ? " · fichado por " + esc(f.fichadoPorNombre) : ""}</p>
+            </div>
+            <div style="text-align:right;flex-shrink:0;">
+              <span class="chip ok">&#10003; ${esc(f.horaEntrada)}</span>
+              <div style="margin-top:6px;"><button class="link-btn btn-deshacer" data-emp="${e.id}">deshacer</button></div>
+            </div>
+          </div>`;
+      }
+      return `
+        <div class="obra-item" style="cursor:default;gap:10px;align-items:center;">
+          <div style="flex:1;min-width:0;">
+            <p class="obra-name" style="font-size:16px;margin-bottom:6px;">${esc(e.nombre)}</p>
+            <select class="campo sel-obra" data-emp="${e.id}" style="height:36px;font-size:13px;margin-bottom:0;">
+              ${opcionesObras(obraElegida[e.id])}
+            </select>
+          </div>
+          <button class="btn-grande btn-entrada" data-emp="${e.id}">Entrada</button>
+        </div>`;
+    }).join("");
+
+    lista.querySelectorAll(".sel-obra").forEach(sel => {
+      sel.addEventListener("change", () => { obraElegida[sel.dataset.emp] = sel.value; });
+    });
+
+    lista.querySelectorAll(".btn-entrada").forEach(btn => {
+      btn.addEventListener("click", () => ficharEntrada(btn));
+    });
+
+    lista.querySelectorAll(".btn-deshacer").forEach(btn => {
+      btn.addEventListener("click", () => deshacer(btn.dataset.emp));
+    });
+  }
+
+  async function ficharEntrada(btn) {
+    const empId = btn.dataset.emp;
+    const emp = empleados.find(e => e.id === empId);
+    const obraId = obraElegida[empId];
+    if (!obraId) {
+      alert(`Elige primero a qué obra va ${emp.nombre}.`);
+      return;
+    }
+    btn.disabled = true;
+    btn.textContent = "...";
+
+    const hora = horaLocal();
+    const docId = `${fecha}_${empId}`;
+    const datos = {
+      empleadoId: empId,
+      empleadoNombre: emp.nombre,
+      fecha,
+      horaEntrada: hora,
+      gpsEntrada: null,
+      origen: "almacén",
+      fichadoPorUid: auth.currentUser ? auth.currentUser.uid : "",
+      fichadoPorNombre: perfil.nombre || "",
+      registradoEn: serverTimestamp()
+    };
+
+    try {
+      // Se guarda al momento (funciona también sin cobertura y se sincroniza después)
+      setDoc(doc(db, "obras", obraId, "fichajes", docId), datos, { merge: true })
+        .catch(err => console.error(err));
+      fichados[empId] = { obraId, docId, ...datos };
+      pintar();
+
+      // La ubicación se añade después, sin hacer esperar a nadie
+      capturarGPS().then(gps => {
+        if (gps) setDoc(doc(db, "obras", obraId, "fichajes", docId), { gpsEntrada: gps }, { merge: true }).catch(() => {});
+      });
+    } catch (err) {
+      console.error(err);
+      alert("No se ha podido guardar la entrada. Inténtalo otra vez.");
+      btn.disabled = false;
+      btn.textContent = "Entrada";
+    }
+  }
+
+  async function deshacer(empId) {
+    const f = fichados[empId];
+    const emp = empleados.find(e => e.id === empId);
+    if (!f) return;
+    if (!confirm(`¿Deshacer la entrada de ${emp.nombre} (${f.horaEntrada})? Quedará anotado en el historial.`)) return;
+    try {
+      await deleteDoc(doc(db, "obras", f.obraId, "fichajes", f.docId));
+      await registrarHistorial({
+        accion: "borrado",
+        obraId: f.obraId,
+        empleadoId: empId,
+        empleadoNombre: emp.nombre,
+        fecha,
+        antes: { ...f },
+        despues: null,
+        motivo: "Entrada deshecha desde el almacén",
+        perfil
+      });
+      delete fichados[empId];
+      pintar();
+    } catch (err) {
+      console.error(err);
+      alert("No se ha podido deshacer. Inténtalo otra vez.");
+    }
+  }
+
+  buscador.addEventListener("input", pintar);
+
+  requireAuth(async (user, p) => {
+    if (!puedeGestionarFichajes(p)) {
+      alert("Esta pantalla es solo para oficina y administración.");
+      window.location.href = "dashboard.html";
+      return;
+    }
+    perfil = p;
+    try {
+      await cargar();
+    } catch (err) {
+      console.error(err);
+      lista.innerHTML = '<div class="placeholder">Error al cargar. Revisa la conexión y vuelve a entrar.</div>';
+    }
+  });
+</script>
+</body>
+</html>

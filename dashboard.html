@@ -31,6 +31,7 @@
 
 <script type="module">
   import { requireAuth, logout } from "./js/auth.js";
+  import { esAdmin, puedeGestionarFichajes, veTodasLasObras, fechaLocal } from "./js/registro.js";
   import { db } from "./js/firebase-config.js";
   import {
     collection, getDocs, query, where, documentId
@@ -39,11 +40,7 @@
   const obrasCard = document.getElementById("obrasCard");
   const userName = document.getElementById("userName");
 
-  function hoy() {
-    const d = new Date();
-    const pad = n => String(n).padStart(2, "0");
-    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-  }
+  const hoy = () => fechaLocal();
 
   async function calcularEstado(obraId) {
     try {
@@ -70,41 +67,34 @@
   requireAuth(async (user, perfil) => {
     userName.textContent = perfil.nombre || user.email;
 
-    const linkDirectorio = document.createElement("button");
-    linkDirectorio.className = "secondary";
-    linkDirectorio.style.marginBottom = "10px";
-    linkDirectorio.textContent = "Directorio de empleados";
-    linkDirectorio.addEventListener("click", () => window.location.href = "empleados.html");
-    obrasCard.parentElement.insertBefore(linkDirectorio, obrasCard);
-
-    if (perfil.rol === "admin") {
-      const linkExportar = document.createElement("button");
-      linkExportar.className = "secondary";
-      linkExportar.style.marginBottom = "10px";
-      linkExportar.textContent = "Exportar fichajes";
-      linkExportar.addEventListener("click", () => window.location.href = "exportar.html");
-      obrasCard.parentElement.insertBefore(linkExportar, obrasCard);
-
-      const linkObras = document.createElement("button");
-      linkObras.className = "secondary";
-      linkObras.style.marginBottom = "10px";
-      linkObras.textContent = "Gestionar obras";
-      linkObras.addEventListener("click", () => window.location.href = "obras.html");
-      obrasCard.parentElement.insertBefore(linkObras, obrasCard);
-
-      const link = document.createElement("button");
-      link.className = "secondary";
-      link.style.marginBottom = "14px";
-      link.textContent = "Gestionar usuarios";
-      link.addEventListener("click", () => window.location.href = "usuarios.html");
-      obrasCard.parentElement.insertBefore(link, obrasCard);
+    // Menú según el rol: admin ve todo, oficina gestiona fichajes, encargado solo sus obras
+    const menu = document.createElement("div");
+    menu.className = "dashboard-menu";
+    function boton(texto, destino, principal) {
+      const b = document.createElement("button");
+      b.className = principal ? "primary" : "secondary";
+      b.textContent = texto;
+      b.addEventListener("click", () => window.location.href = destino);
+      menu.appendChild(b);
     }
+
+    if (puedeGestionarFichajes(perfil)) {
+      boton("Fichaje en almacén (entradas de hoy)", "almacen.html", true);
+      boton("Registro manual y correcciones", "registro.html");
+      boton("Exportar fichajes", "exportar.html");
+    }
+    boton("Directorio de empleados", "empleados.html");
+    if (esAdmin(perfil)) {
+      boton("Gestionar obras", "obras.html");
+      boton("Gestionar usuarios", "usuarios.html");
+    }
+    obrasCard.parentElement.insertBefore(menu, obrasCard);
 
     try {
       let obras = [];
       const obrasRef = collection(db, "obras");
 
-      if (perfil.rol === "admin") {
+      if (veTodasLasObras(perfil)) {
         const snap = await getDocs(obrasRef);
         obras = snap.docs.map(d => ({ id: d.id, ...d.data() }));
       } else {
