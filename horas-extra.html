@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Abel's | Horas extra</title>
+<link rel="manifest" href="manifest.json">
+<link rel="stylesheet" href="css/styles.css">
+<style>
+  .he-item { padding: 12px 0; border-bottom: 1px solid var(--border); }
+  .he-item:last-child { border-bottom: none; }
+  .he-cab { display: flex; align-items: center; gap: 10px; cursor: pointer; }
+  .barra { height: 6px; border-radius: 3px; background: var(--border); margin-top: 6px; overflow: hidden; }
+  .barra > span { display: block; height: 100%; border-radius: 3px; }
+  .detalle { margin: 8px 0 0 46px; font-size: 13px; color: var(--text-secondary); display: grid; gap: 2px; font-variant-numeric: tabular-nums; }
+  .chip.mal { background: var(--danger-bg); color: var(--danger); }
+  .num { font-variant-numeric: tabular-nums; font-weight: 600; }
+</style>
+</head>
+<body>
+<div class="screen">
+  <div class="topbar">
+    <button class="icon-btn" id="backBtn" title="Volver" aria-label="Volver">&#8592;</button>
+    <div class="topbar-info">
+      <p class="topbar-obra">Oficina</p>
+      <p class="topbar-title">Horas extra del año</p>
+    </div>
+  </div>
+
+  <div class="card" style="display:flex;gap:10px;align-items:center;">
+    <label for="anio" style="margin:0;">Año</label>
+    <select id="anio" class="campo" style="margin:0;"></select>
+  </div>
+
+  <p id="resumen" style="font-size:13px;color:var(--text-secondary);margin:0 0 10px;"></p>
+
+  <div class="card" id="lista"><div class="loading">Calculando...</div></div>
+  <p style="font-size:12px;color:var(--text-muted);text-align:center;">Toca un trabajador para ver los días. El tope y el aviso se cambian en "Jornada y horas extra".</p>
+</div>
+
+<script type="module">
+  import { requireAuth } from "./js/auth.js";
+  import { db } from "./js/firebase-config.js";
+  import { collection, getDocs, query, where } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+  import { cargarConfig, puedeGestionarFichajes, esc, avatar, fechaBonita, textoHoras } from "./js/registro.js";
+
+  const $ = id => document.getElementById(id);
+  $("backBtn").addEventListener("click", () => window.location.href = "dashboard.html");
+
+  let cfg, empleados = [], obras = [];
+
+  async function calcular() {
+    const anio = $("anio").value;
+    $("lista").innerHTML = '<div class="loading">Calculando...</div>';
+    const snaps = await Promise.all(obras.map(o => getDocs(query(
+      collection(db, "obras", o.id, "fichajes"),
+      where("fecha", ">=", `${anio}-01-01`), where("fecha", "<=", `${anio}-12-31`)
+    )).then(s => ({ obra: o, s }))));
+
+    const porEmp = {};
+    snaps.forEach(({ obra, s }) => s.forEach(d => {
+      const f = d.data();
+      const h = Number(f.horasExtra) || 0;
+      if (h <= 0) return;
+      (porEmp[f.empleadoId] ||= { nombre: f.empleadoNombre, dias: [] }).dias.push({ fecha: f.fecha, h, obra: obra.nombre });
+    }));
+
+    const tope = Number(cfg.topeAnualExtras) || 0;
+    const aviso = Number(cfg.avisoExtras) || 0;
+    const filas = Object.entries(porEmp).map(([id, v]) => {
+      const total = v.dias.reduce((s, x) => s + x.h, 0);
+      const emp = empleados.find(e => e.id === id) || { nombre: v.nombre };
+      return { id, emp, nombre: emp.nombre || v.nombre, total, dias: v.dias.sort((a, b) => a.fecha.localeCompare(b.fecha)) };
+    }).sort((a, b) => b.total - a.total);
+
+    const sobre = filas.filter(f => tope && f.total > tope).length;
+    const cerca = filas.filter(f => aviso && f.total >= aviso && !(tope && f.total > tope)).length;
+    $("resumen").textContent = filas.length
+      ? `${filas.length} trabajador(es) con horas extra en ${anio}. Tope: ${tope} h${sobre ? ` · ${sobre} por encima` : ""}${cerca ? ` · ${cerca} cerca del tope` : ""}.`
+      : "";
+
+    if (filas.length === 0) {
+      $("lista").innerHTML = `<div class="placeholder">No hay horas extra apuntadas en ${anio}.</div>`;
+      return;
+    }
+
+    $("lista").innerHTML = filas.map(f => {
+      const estado = tope && f.total > tope ? "mal" : aviso && f.total >= aviso ? "aviso" : "ok";
+      const texto = estado === "mal" ? `${textoHoras(f.total - tope)} por encima` : estado === "aviso" ? "cerca del tope" : "dentro del límite";
+      const color = estado === "mal" ? "var(--danger)" : estado === "aviso" ? "var(--accent)" : "var(--success)";
+      const pct = tope ? Math.min(100, f.total / tope * 100) : 0;
+      // Marca qué días ya caen por encima del tope (acumulado)
+      let acum = 0;
+      const dias = f.dias.map(d => {
+        acum += d.h;
+        const encima = tope && acum > tope;
+        return `<span>${fechaBonita(d.fecha)} · ${textoHoras(d.h)} · ${esc(d.obra)}${encima ? ' <b style="color:var(--danger);">· por encima del tope</b>' : ""}</span>`;
+      }).join("");
+      return `
+        <div class="he-item">
+          <div class="he-cab">
+            ${avatar(f.emp, 36)}
+            <div style="flex:1;min-width:0;">
+              <div style="display:flex;justify-content:space-between;gap:8px;align-items:baseline;">
+                <span class="obra-name" style="font-size:14px;">${esc(f.nombre)}</span>
+                <span class="num">${textoHoras(f.total)}</span>
+              </div>
+              <div class="barra"><span style="width:${pct}%;background:${color};"></span></div>
+              <span class="chip ${estado}" style="margin-top:6px;">${texto}</span>
+            </div>
+          </div>
+          <div class="detalle" hidden>${dias}</div>
+        </div>`;
+    }).join("");
+    $("lista").querySelectorAll(".he-cab").forEach(c => c.addEventListener("click", () => {
+      const d = c.nextElementSibling; d.hidden = !d.hidden;
+    }));
+  }
+
+  $("anio").addEventListener("change", calcular);
+
+  requireAuth(async (user, p) => {
+    if (!puedeGestionarFichajes(p)) {
+      alert("Esta pantalla es solo para oficina y administración.");
+      window.location.href = "dashboard.html";
+      return;
+    }
+    const y = new Date().getFullYear();
+    $("anio").innerHTML = [y, y - 1].map(a => `<option value="${a}">${a}</option>`).join("");
+    const [c, empSnap, obrasSnap] = await Promise.all([
+      cargarConfig(), getDocs(collection(db, "empleados")), getDocs(collection(db, "obras"))
+    ]);
+    cfg = c;
+    empleados = empSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+    obras = obrasSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+    calcular();
+  });
+</script>
+</body>
+</html>
