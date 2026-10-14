@@ -157,7 +157,7 @@
     return filas;
   }
 
-  const cabecera = ["Trabajador", "Fecha", "Obra", "Entrada", "Salida", "Horas", "Registrado", "Registrado por", "Corregido", "Motivo corrección", "Ubicación entrada", "Ubicación salida"];
+  const cabecera = ["Trabajador", "Fecha", "Obra", "Entrada", "Salida", "Horas", "Conduce", "Registrado", "Registrado por", "Corregido", "Motivo corrección", "Ubicación entrada", "Ubicación salida"];
 
   function filaDatos(f) {
     return [
@@ -167,6 +167,7 @@
       f.horaEntrada || "",
       f.horaSalida || "",
       horasEntreHoras(f.horaEntrada, f.horaSalida),
+      f.vehiculoNombre || "",
       origenTexto(f),
       f.fichadoPorNombre || "",
       f.modificado ? "Sí" : "",
@@ -211,7 +212,7 @@
     const datos = [cabecera, ...filas.map(filaDatos)];
     const hoja = XLSX.utils.aoa_to_sheet(datos);
     hoja["!cols"] = [
-      { wch: 20 }, { wch: 11 }, { wch: 20 }, { wch: 8 }, { wch: 8 }, { wch: 7 },
+      { wch: 20 }, { wch: 11 }, { wch: 20 }, { wch: 8 }, { wch: 8 }, { wch: 7 }, { wch: 22 },
       { wch: 16 }, { wch: 16 }, { wch: 10 }, { wch: 28 }, { wch: 22 }, { wch: 22 }
     ];
     const libro = XLSX.utils.book_new();
@@ -235,8 +236,8 @@
     pdf.text(`Total: ${filas.length} fichajes · ${totalHoras(filas)} horas`, 14, 25);
     pdf.autoTable({
       startY: 29,
-      head: [cabecera.slice(0, 10)],
-      body: filas.map(f => filaDatos(f).slice(0, 10)),
+      head: [cabecera.slice(0, 11)],
+      body: filas.map(f => filaDatos(f).slice(0, 11)),
       styles: { fontSize: 7.5, cellPadding: 1.5 },
       headStyles: { fillColor: [216, 90, 48] }
     });
