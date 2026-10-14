@@ -79,7 +79,7 @@
     collection, getDocs, query, where, doc, setDoc, deleteDoc, serverTimestamp
   } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
   import {
-    ayer, fechaBonita, puedeGestionarFichajes, registrarHistorial, esc
+    ayer, fechaBonita, puedeGestionarFichajes, registrarHistorial, esc, avatar
   } from "./js/registro.js";
 
   const fechaInput = document.getElementById("fecha");
@@ -97,6 +97,7 @@
   let perfil = null;
   let saliendo = false;
   let obras = [];
+  let vehiculos = [];
   let filas = [];   // { empId, nombre, existente: {obraId, docId, ...} | null, obraId, entrada, salida }
 
   document.getElementById("backBtn").addEventListener("click", () => {
@@ -132,8 +133,9 @@
 
   function cambiada(f) {
     const e = f.existente;
-    if (!e) return !!(f.entrada || f.salida);
-    return f.obraId !== e.obraId || f.entrada !== (e.horaEntrada || "") || f.salida !== (e.horaSalida || "");
+    if (!e) return !!(f.entrada || f.salida || f.vehiculoId);
+    return f.obraId !== e.obraId || f.entrada !== (e.horaEntrada || "") || f.salida !== (e.horaSalida || "")
+      || f.vehiculoId !== (e.vehiculoId || "");
   }
 
   function hayCambios() { return filas.some(cambiada); }
@@ -149,10 +151,13 @@
     lista.innerHTML = '<div class="loading">Cargando...</div>';
     const fecha = fechaInput.value;
 
-    const [obrasSnap, empSnap] = await Promise.all([
+    const [obrasSnap, empSnap, vehSnap] = await Promise.all([
       getDocs(collection(db, "obras")),
-      getDocs(collection(db, "empleados"))
+      getDocs(collection(db, "empleados")),
+      getDocs(collection(db, "vehiculos"))
     ]);
+    vehiculos = vehSnap.docs.map(d => ({ id: d.id, ...d.data() }))
+      .sort((a, b) => (a.nombre || "").localeCompare(b.nombre || ""));
     obras = obrasSnap.docs.map(d => ({ id: d.id, ...d.data() }))
       .sort((a, b) => (a.nombre || "").localeCompare(b.nombre || ""));
     const empleados = empSnap.docs.map(d => ({ id: d.id, ...d.data() }));
@@ -173,17 +178,21 @@
       return {
         empId: e.id,
         nombre: e.nombre || "Sin nombre",
+        emp: e,
+        carnet: !!e.carnet,
         existente: ex,
         obraId: ex ? ex.obraId : (e.obraAsignada || ""),
         entrada: ex ? (ex.horaEntrada || "") : "",
-        salida: ex ? (ex.horaSalida || "") : ""
+        salida: ex ? (ex.horaSalida || "") : "",
+        vehiculoId: ex ? (ex.vehiculoId || "") : ""
       };
     });
     // Fichajes de personas que ya no están en el directorio
     Object.values(existentes).forEach(ex => {
       if (!filas.find(f => f.empId === ex.empleadoId)) {
         filas.push({ empId: ex.empleadoId, nombre: ex.empleadoNombre || "Sin nombre", existente: ex,
-          obraId: ex.obraId, entrada: ex.horaEntrada || "", salida: ex.horaSalida || "" });
+          obraId: ex.obraId, entrada: ex.horaEntrada || "", salida: ex.horaSalida || "",
+          emp: { nombre: ex.empleadoNombre }, carnet: !!ex.vehiculoId, vehiculoId: ex.vehiculoId || "" });
       }
     });
     filas.sort((a, b) => a.nombre.localeCompare(b.nombre));
@@ -195,6 +204,23 @@
   function opcionesObras(sel) {
     return `<option value="" ${!sel ? "selected" : ""}>Elegir obra...</option>` +
       obras.map(o => `<option value="${o.id}" ${o.id === sel ? "selected" : ""}>${esc(o.nombre)}</option>`).join("");
+  }
+
+  function nombreVehiculo(id) {
+    const v = vehiculos.find(v => v.id === id);
+    return v ? v.nombre + (v.matricula ? " (" + v.matricula + ")" : "") : "";
+  }
+
+  function selectCoche(f) {
+    if (!f.carnet || vehiculos.length === 0) return "";
+    const otros = id => filas.filter(x => x !== f && x.vehiculoId === id && (x.entrada || x.existente)).map(x => x.nombre);
+    return `<select class="campo c-coche" style="grid-column:1 / -1;" aria-label="Coche que condujo">
+      <option value="" ${!f.vehiculoId ? "selected" : ""}>No condujo</option>
+      ${vehiculos.map(v => {
+        const o = otros(v.id);
+        return `<option value="${v.id}" ${v.id === f.vehiculoId ? "selected" : ""}>Condujo: ${esc(v.nombre)}${o.length ? " · también " + esc(o.join(", ")) : ""}</option>`;
+      }).join("")}
+    </select>`;
   }
 
   function etiquetaEstado(f) {
@@ -223,13 +249,14 @@
     lista.innerHTML = visibles.map(f => `
       <div class="fila ${cambiada(f) ? "cambiada" : ""}" data-emp="${f.empId}">
         <div class="fila-cab">
-          <p class="obra-name">${esc(f.nombre)}</p>
+          <div style="display:flex;align-items:center;gap:10px;min-width:0;">${avatar(f.emp, 36)}<p class="obra-name">${esc(f.nombre)}</p></div>
           ${etiquetaEstado(f)}
         </div>
         <div class="fila-campos">
           <select class="campo c-obra">${opcionesObras(f.obraId)}</select>
           <input type="time" class="c-entrada" value="${esc(f.entrada)}" aria-label="Hora de entrada">
           <input type="time" class="c-salida" value="${esc(f.salida)}" aria-label="Hora de salida">
+          ${selectCoche(f)}
         </div>
         <div class="fila-acciones">
           <button class="link-btn b-jornada">jornada normal</button>
@@ -248,6 +275,8 @@
       div.querySelector(".c-obra").addEventListener("change", e => { f.obraId = e.target.value; refrescar(); });
       div.querySelector(".c-entrada").addEventListener("change", e => { f.entrada = e.target.value; refrescar(); });
       div.querySelector(".c-salida").addEventListener("change", e => { f.salida = e.target.value; refrescar(); });
+      const cCoche = div.querySelector(".c-coche");
+      if (cCoche) cCoche.addEventListener("change", e => { f.vehiculoId = e.target.value; pintar(); });
       div.querySelector(".b-jornada").addEventListener("click", () => {
         f.entrada = jornadaEntrada.value;
         f.salida = jornadaSalida.value;
@@ -259,6 +288,7 @@
         f.obraId = e ? e.obraId : f.obraId;
         f.entrada = e ? (e.horaEntrada || "") : "";
         f.salida = e ? (e.horaSalida || "") : "";
+        f.vehiculoId = e ? (e.vehiculoId || "") : "";
         pintar();
       });
       const bBorrar = div.querySelector(".b-borrar");
@@ -320,7 +350,9 @@
           empleadoNombre: f.nombre,
           fecha,
           horaEntrada: f.entrada,
-          horaSalida: f.salida || ""
+          horaSalida: f.salida || "",
+          vehiculoId: f.vehiculoId || "",
+          vehiculoNombre: nombreVehiculo(f.vehiculoId)
         };
 
         if (!e) {
@@ -351,6 +383,8 @@
           await setDoc(doc(db, "obras", e.obraId, "fichajes", e.docId), {
             horaEntrada: f.entrada,
             horaSalida: f.salida || "",
+            vehiculoId: nuevo.vehiculoId,
+            vehiculoNombre: nuevo.vehiculoNombre,
             modificado: true,
             ultimaModificacion: { ...quien, momento: new Date().toISOString() }
           }, { merge: true });
@@ -377,7 +411,7 @@
         historialDiv.innerHTML = '<div class="placeholder" style="padding:16px 0;">Sin cambios manuales este día.</div>';
         return;
       }
-      const horas = f => f ? `${f.horaEntrada || "--:--"}-${f.horaSalida || "--:--"} (${nombreObra(f.obraId)})` : "—";
+      const horas = f => f ? `${f.horaEntrada || "--:--"}-${f.horaSalida || "--:--"} (${nombreObra(f.obraId)})${f.vehiculoNombre ? " · " + f.vehiculoNombre : ""}` : "—";
       historialDiv.innerHTML = items.map(h => `
         <div class="hist-item">
           <b>${esc(h.momentoLocal || "")}</b> · ${esc(h.usuarioNombre || "?")}: ${esc(h.accion)} de <b>${esc(h.empleadoNombre)}</b><br>
