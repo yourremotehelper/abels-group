@@ -2,7 +2,8 @@
 // fechas y horas en hora local, roles y el historial de cambios.
 import { db, auth } from "./firebase-config.js";
 import {
-  collection, addDoc, serverTimestamp
+  collection, addDoc, serverTimestamp, doc as _doc, getDoc as _getDoc,
+  getDocs as _getDocs, query as _query, where as _where
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
 const pad = n => String(n).padStart(2, "0");
@@ -42,7 +43,7 @@ export function nombreRol(rol) {
 export function copiaFichaje(f) {
   if (!f) return null;
   const copia = {};
-  ["obraId", "empleadoId", "empleadoNombre", "fecha", "horaEntrada", "horaSalida", "origen", "fichadoPorNombre", "vehiculoNombre"]
+  ["obraId", "empleadoId", "empleadoNombre", "fecha", "horaEntrada", "horaSalida", "origen", "fichadoPorNombre", "vehiculoNombre", "horasExtra"]
     .forEach(k => { if (f[k] !== undefined && f[k] !== null) copia[k] = f[k]; });
   return copia;
 }
@@ -108,4 +109,74 @@ export function comprimirFoto(file, lado = 240, calidad = 0.75) {
 export function textoCarnet(emp) {
   if (!emp || !emp.carnet) return "";
   return emp.carnetTipo ? emp.carnetTipo : "Sí";
+}
+
+// ---------- Jornada, horas extra y ausencias ----------
+// Valores provisionales hasta que se configure la jornada en "Jornada y horas extra"
+export const CONFIG_POR_DEFECTO = {
+  horaEntrada: "08:00",
+  horaSalida: "17:00",
+  descansoMin: 0,          // minutos de comida/descanso que no cuentan como trabajo
+  horasLunesJueves: 8,
+  horasViernes: 8,
+  topeAnualExtras: 80,
+  avisoExtras: 70,
+  configurada: false
+};
+
+export async function cargarConfig() {
+  try {
+    const snap = await _getDoc(_doc(db, "config", "jornada"));
+    return { ...CONFIG_POR_DEFECTO, ...(snap.exists() ? snap.data() : {}) };
+  } catch {
+    return { ...CONFIG_POR_DEFECTO };
+  }
+}
+
+const aMin = h => { if (!h) return null; const [a, b] = h.split(":").map(Number); return a * 60 + b; };
+
+// Horas de jornada que tocan ese día (0 sábados y domingos)
+export function horasDelDia(fecha, cfg) {
+  const dia = new Date(fecha + "T12:00:00").getDay();
+  if (dia === 0 || dia === 6) return 0;
+  return dia === 5 ? Number(cfg.horasViernes) : Number(cfg.horasLunesJueves);
+}
+
+// Horas trabajadas = de entrada a salida, menos el descanso si la jornada pasa de 6 horas
+export function horasTrabajadas(entrada, salida, cfg) {
+  const e = aMin(entrada), s = aMin(salida);
+  if (e === null || s === null || s <= e) return 0;
+  let min = s - e;
+  if (min > 360) min -= Number(cfg.descansoMin) || 0;
+  return Math.max(0, Math.round(min / 6) / 10);   // redondeo a 0,1 h
+}
+
+// Propuesta de horas extra: lo que pasa de la jornada del día (editable siempre)
+export function extraSugerida(fecha, entrada, salida, cfg) {
+  const t = horasTrabajadas(entrada, salida, cfg);
+  return Math.max(0, Math.round((t - horasDelDia(fecha, cfg)) * 10) / 10);
+}
+
+export const TIPOS_AUSENCIA = {
+  vacaciones: "Vacaciones",
+  baja: "Baja",
+  asuntos: "Asuntos propios",
+  permiso: "Permiso (médico, familiar...)",
+  injustificada: "Falta sin justificar"
+};
+export const AUSENCIA_JUSTIFICADA = t => t !== "injustificada";
+
+export async function cargarAusenciasDelDia(fecha) {
+  // Ausencias que empiezan antes o el mismo día; se filtran las que ya terminaron
+  const snap = await _getDocs(_query(collection(db, "ausencias"), _where("desde", "<=", fecha)));
+  const mapa = {};
+  snap.forEach(d => {
+    const a = { id: d.id, ...d.data() };
+    if ((a.hasta || a.desde) >= fecha) mapa[a.empleadoId] = a;
+  });
+  return mapa;
+}
+
+export function textoHoras(n) {
+  return (Math.round((Number(n) || 0) * 10) / 10).toLocaleString("es-ES") + " h";
 }
