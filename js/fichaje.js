@@ -1,4 +1,5 @@
-import { db } from "./firebase-config.js";
+import { db, auth } from "./firebase-config.js";
+import { registrarHistorial } from "./registro.js";
 import {
   collection, getDocs, addDoc, doc, setDoc, deleteDoc, query, where, orderBy
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
@@ -52,7 +53,7 @@ function gpsLinks(f) {
   return links.join("");
 }
 
-export async function renderFichaje(container, obraId) {
+export async function renderFichaje(container, obraId, perfil = {}) {
   container.innerHTML = '<div class="loading">Cargando fichaje...</div>';
 
   const fecha = fechaHoy();
@@ -119,9 +120,12 @@ export async function renderFichaje(container, obraId) {
           empleadoNombre: btn.dataset.nombre,
           fecha,
           horaEntrada: horaAhora(),
-          gpsEntrada: gps
+          gpsEntrada: gps,
+          origen: "obra",
+          fichadoPorUid: auth.currentUser ? auth.currentUser.uid : "",
+          fichadoPorNombre: perfil.nombre || ""
         }, { merge: true });
-        fichajes[empId] = { horaEntrada: horaAhora(), fecha, gpsEntrada: gps };
+        fichajes[empId] = { horaEntrada: horaAhora(), fecha, gpsEntrada: gps, empleadoNombre: btn.dataset.nombre };
         pintar();
       });
     });
@@ -177,7 +181,14 @@ export async function renderFichaje(container, obraId) {
         if (!confirm("¿Borrar el fichaje de hoy de esta persona? Volverá a aparecer como no fichada.")) return;
         const empId = btn.dataset.emp;
         const docId = `${fecha}_${empId}`;
+        const antes = fichajes[empId];
         await deleteDoc(doc(db, "obras", obraId, "fichajes", docId));
+        await registrarHistorial({
+          accion: "borrado", obraId, empleadoId: empId,
+          empleadoNombre: (antes && antes.empleadoNombre) || "", fecha,
+          antes: antes ? { ...antes, obraId } : null, despues: null,
+          motivo: "Borrado desde la obra", perfil
+        });
         delete fichajes[empId];
         pintar();
       });
