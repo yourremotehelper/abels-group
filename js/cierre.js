@@ -1,4 +1,4 @@
-// Cierre de jornada del encargado: confirma quién ha estado en la obra,
+// Cierre del día (solo oficina): confirma quién ha estado en la obra,
 // pone la hora de salida y apunta las horas extra (separadas de las normales).
 import { db, auth } from "./firebase-config.js";
 import {
@@ -80,7 +80,7 @@ export async function renderCierre(container, obraId, perfil = {}) {
             <div><label style="font-size:12px;margin-bottom:4px;">Horas extra</label>
               <input type="number" class="c-extra" value="${x.extra}" min="0" max="12" step="0.5" inputmode="decimal" style="margin:0;height:40px;"></div>
           </div>
-          <p class="obra-meta c-resumen" style="margin-top:6px;">${x.presente ? resumen(x) : "No ha estado en la obra: se avisará a la oficina."}</p>
+          <p class="obra-meta c-resumen" style="margin-top:6px;">${x.presente ? resumen(x) : "No ha estado en la obra: quedará marcado para revisarlo."}</p>
         </div>`).join("") + "</div>";
       html += `<button class="primary" id="cerrarBtn">${cerradas ? "Guardar cambios del cierre" : "Cerrar jornada"}</button>`;
       html += '<p id="cierreMsg" style="font-size:13px;color:var(--success-dark);text-align:center;margin:10px 0 0;"></p>';
@@ -128,7 +128,7 @@ export async function renderCierre(container, obraId, perfil = {}) {
         x.presente = e.target.checked;
         div.style.opacity = x.presente ? "" : "0.6";
         div.querySelector(".c-campos").style.display = x.presente ? "grid" : "none";
-        res.textContent = x.presente ? resumen(x) : "No ha estado en la obra: se avisará a la oficina.";
+        res.textContent = x.presente ? resumen(x) : "No ha estado en la obra: quedará marcado para revisarlo.";
       });
       div.querySelector(".c-salida").addEventListener("change", e => {
         x.salida = e.target.value;
@@ -198,7 +198,7 @@ export async function renderCierre(container, obraId, perfil = {}) {
             await registrarHistorial({
               accion: "corrección", obraId, empleadoId: x.f.empleadoId, empleadoNombre: x.f.empleadoNombre, fecha,
               antes: { ...x.f, obraId }, despues: { ...x.f, ...datos, obraId },
-              motivo: "Cierre de jornada modificado por el encargado", perfil
+              motivo: "Cierre del día modificado", perfil
             });
           }
         }
