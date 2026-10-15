@@ -28,8 +28,8 @@
   </div>
 
   <div class="card">
-    <h1 style="font-size:16px;margin-bottom:4px;">Sin fichar y sin motivo</h1>
-    <p style="font-size:12px;color:var(--text-muted);margin:0 0 10px;">Trabajadores que no tienen fichaje ni ausencia ese día. Asigna el motivo para que no quede ninguna falta sin registrar.</p>
+    <h1 style="font-size:16px;margin-bottom:4px;">Sin apuntar y sin motivo</h1>
+    <p style="font-size:12px;color:var(--text-muted);margin:0 0 10px;">Trabajadores sin asistencia ni ausencia apuntada ese día. Asigna el motivo para que no quede ninguna falta sin registrar.</p>
     <input type="date" id="diaSinFichar">
     <div id="sinFichar"><div class="loading">Cargando...</div></div>
   </div>
@@ -130,7 +130,7 @@
     }
     if (noConfirmados.length) {
       html += `<div class="error-msg" style="display:block;margin:12px 0 0;">
-        <b>Entrada fichada pero el encargado dice que no estuvo en la obra:</b><br>
+        <b>Con entrada apuntada pero marcados como que no estuvieron en la obra:</b><br>
         ${noConfirmados.map(f => `${esc(f.empleadoNombre)} (${esc(f.obra)}, entrada ${esc(f.horaEntrada || "")}, cerrado por ${esc(f.cerradoPorNombre || "?")})`).join("<br>")}
         <br><span style="font-size:12px;">Revísalo y corrígelo en "Registro manual y correcciones".</span>
       </div>`;
