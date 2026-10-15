@@ -87,7 +87,7 @@ export async function renderResumen(container, obraId, offsetSemanas = 0) {
             <p style="font-size:20px;font-weight:500;margin:0;">${diasConGente.size} día${diasConGente.size === 1 ? "" : "s"}</p>
           </div>
           <div style="background:var(--bg);border-radius:8px;padding:10px;">
-            <p style="font-size:12px;color:var(--text-muted);margin:0 0 4px;">Horas fichadas</p>
+            <p style="font-size:12px;color:var(--text-muted);margin:0 0 4px;">Horas apuntadas</p>
             <p style="font-size:20px;font-weight:500;margin:0;">${horasTotales} h</p>
           </div>
           <div style="background:var(--bg);border-radius:8px;padding:10px;">
