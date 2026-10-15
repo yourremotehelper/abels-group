@@ -16,12 +16,12 @@
     <button class="icon-btn" id="backBtn" title="Volver" aria-label="Volver">&#8592;</button>
     <div class="topbar-info">
       <p class="topbar-obra">Oficina</p>
-      <p class="topbar-title">Exportar fichajes</p>
+      <p class="topbar-title">Exportar control de asistencia</p>
     </div>
   </div>
 
   <div class="card">
-    <p style="font-size:13px;color:var(--text-secondary);margin:0 0 16px;">Descarga el registro horario para una inspección de trabajo, para la gestoría o para tus propios archivos.</p>
+    <p style="font-size:13px;color:var(--text-secondary);margin:0 0 16px;">Descarga el control interno de asistencia y horas. Es un documento de la oficina: el registro oficial de jornada sigue siendo el sistema de fichaje actual.</p>
 
     <div class="error-msg" id="errorMsg"></div>
 
@@ -179,7 +179,7 @@
   const extra = f => Number(f.horasExtra) || 0;
   const num = n => n ? Math.round(n * 100) / 100 : "";
 
-  const cabecera = ["Trabajador", "Fecha", "Obra", "Entrada", "Salida", "Horas trabajadas", "Normales", "Extra", "Conduce", "Registrado", "Registrado por", "Corregido", "Motivo corrección", "Confirmado por encargado", "Ubicación entrada", "Ubicación salida"];
+  const cabecera = ["Trabajador", "Fecha", "Obra", "Entrada", "Salida", "Horas trabajadas", "Normales", "Extra", "Conduce", "Registrado", "Registrado por", "Corregido", "Motivo corrección", "Presencia confirmada", "Ubicación entrada", "Ubicación salida"];
 
   function filaDatos(f) {
     return [
@@ -254,7 +254,7 @@
   pdfBtn.addEventListener("click", () => ejecutar(pdfBtn, "Descargar PDF", filas => {
     const { jsPDF } = window.jspdf;
     const pdf = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
-    const titulo = "Registro de jornada · Abel's Construcciones & Reformas";
+    const titulo = "Control interno de asistencia · Abel's Construcciones & Reformas";
     const filtros = [
       obraSelect.value ? "Obra: " + nombreObra(obraSelect.value) : "Todas las obras",
       empleadoSelect.value ? "Trabajador: " + empleadoSelect.selectedOptions[0].textContent : "Todos los trabajadores",
@@ -263,7 +263,7 @@
     pdf.setFontSize(13);
     pdf.text(titulo, 14, 14);
     pdf.setFontSize(9);
-    pdf.text(filtros, 14, 20);
+    pdf.text(filtros + "  ·  Documento interno: no sustituye al registro oficial de jornada", 14, 20);
     pdf.text(`Total: ${filas.length} fichajes · ${totalHoras(filas)} horas trabajadas · ${totalExtra(filas)} horas extra · ${filas.ausencias.length} ausencias`, 14, 25);
     const colsPdf = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 11, 13];
     pdf.autoTable({
