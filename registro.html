@@ -234,7 +234,7 @@
     const a = ausencias[f.empId];
     if (!e && a) return `<span class="chip">${esc(TIPOS_AUSENCIA[a.tipo] || "Ausente")}</span>`;
     if (!e) return '<span class="chip">sin registro</span>';
-    if (e.presenciaConfirmada === false) return '<span class="chip aviso">el encargado dice que no estuvo</span>';
+    if (e.presenciaConfirmada === false) return '<span class="chip aviso">marcado: no estuvo en obra</span>';
     const horas = `${e.horaEntrada || "--:--"} - ${e.horaSalida || "--:--"}${e.horasExtra ? " +" + e.horasExtra + " h extra" : ""}`;
     const extra = e.modificado ? " · corregido" : (e.origen === "manual" ? " · manual" : "");
     return `<span class="chip ok">${esc(horas)}${extra}</span>`;
