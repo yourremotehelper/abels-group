@@ -20,7 +20,7 @@
 
   <div class="tabs">
     <div class="tab active" data-tab="resumen">Resumen</div>
-    <div class="tab" data-tab="fichaje">Fichaje</div>
+    <div class="tab" data-tab="fichaje">Asistencia</div>
     <div class="tab" data-tab="cierre">Cierre del día</div>
     <div class="tab" data-tab="necesita">Se necesita</div>
     <div class="tab" data-tab="gastos">Gastos</div>
@@ -40,6 +40,7 @@
   import { requireAuth, logout } from "./js/auth.js";
   import { renderFichaje } from "./js/fichaje.js";
   import { renderCierre } from "./js/cierre.js";
+  import { puedeGestionarFichajes } from "./js/registro.js";
   import { renderNecesidades } from "./js/necesidades.js";
   import { renderResumen } from "./js/resumen.js";
   import { renderGastos } from "./js/gastos.js";
@@ -67,6 +68,10 @@
   let perfilActual = {};
   requireAuth((user, perfil) => {
     perfilActual = perfil;
+    // El control de asistencia es solo para oficina y administración (el fichaje oficial va por su sistema actual)
+    if (!puedeGestionarFichajes(perfil)) {
+      document.querySelectorAll('.tab[data-tab="fichaje"], .tab[data-tab="cierre"]').forEach(t => t.remove());
+    }
     obraTitle.textContent = obraActual.nombre || "Obra";
     renderResumen(tabContent, obraActual.id);
   });
