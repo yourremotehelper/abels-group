@@ -24,7 +24,7 @@
 
   <div style="display:flex;gap:14px;justify-content:center;flex-wrap:wrap;margin-top:10px;">
     <span style="font-size:12px;color:var(--text-secondary);"><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--danger);margin-right:4px;"></span>urgente pendiente</span>
-    <span style="font-size:12px;color:var(--text-secondary);"><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#D9A400;margin-right:4px;"></span>sin fichar hoy</span>
+    <span id="leyendaSinFichar" style="font-size:12px;color:var(--text-secondary);"><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#D9A400;margin-right:4px;"></span>sin asistencia hoy</span>
     <span style="font-size:12px;color:var(--text-secondary);"><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--success);margin-right:4px;"></span>al día</span>
   </div>
 </div>
@@ -39,6 +39,7 @@
 
   const obrasCard = document.getElementById("obrasCard");
   const userName = document.getElementById("userName");
+  let controlAsistencia = false;
 
   const hoy = () => fechaLocal();
 
@@ -52,7 +53,7 @@
       const hayUrgentesPendientes = urgentesSnap.docs.some(d => d.data().estado !== "hecho");
       const hayIncidenciasAbiertas = !incidenciasSnap.empty;
       if (hayUrgentesPendientes || hayIncidenciasAbiertas) return "var(--danger)";
-      if (fichajesSnap.empty) return "#D9A400";
+      if (fichajesSnap.empty && controlAsistencia) return "#D9A400";
       return "var(--success)";
     } catch {
       return "var(--text-muted)";
@@ -66,6 +67,8 @@
 
   requireAuth(async (user, perfil) => {
     userName.textContent = perfil.nombre || user.email;
+    controlAsistencia = puedeGestionarFichajes(perfil);
+    if (!controlAsistencia) document.getElementById("leyendaSinFichar").remove();
 
     // Menú según el rol: admin ve todo, oficina gestiona fichajes, encargado solo sus obras
     const menu = document.createElement("div");
@@ -79,11 +82,11 @@
     }
 
     if (puedeGestionarFichajes(perfil)) {
-      boton("Fichaje en almacén (entradas de hoy)", "almacen.html", true);
+      boton("Control de asistencia (almacén)", "almacen.html", true);
       boton("Registro manual y correcciones", "registro.html");
-      boton("Ausencias y sin fichar", "ausencias.html");
+      boton("Ausencias y sin apuntar", "ausencias.html");
       boton("Horas extra del año", "horas-extra.html");
-      boton("Exportar fichajes", "exportar.html");
+      boton("Exportar control de asistencia", "exportar.html");
     }
     boton("Directorio de empleados", "empleados.html");
     if (puedeGestionarFichajes(perfil)) {
