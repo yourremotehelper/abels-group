@@ -20,17 +20,33 @@
   .barra > span { display: block; height: 100%; border-radius: 3px; background: var(--success); }
   .periodo { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; margin: 8px 0 0 46px; font-size: 13px; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
   .num { font-variant-numeric: tabular-nums; font-weight: 600; }
+  /* Pantalla de oficina: a lo ancho en el PC, formulario a la izquierda y lista del año a la derecha */
+  .screen.ancha { max-width: 1040px; }
+  .dos-col { display: grid; grid-template-columns: minmax(300px, 380px) 1fr; gap: 14px; align-items: start; }
+  .dos-col > .card { margin-bottom: 0; min-width: 0; }
+  @media (max-width: 760px) { .dos-col { grid-template-columns: 1fr; } }
+  .secciones { display: flex; gap: 8px; margin-bottom: 14px; flex-wrap: wrap; }
+  .secciones a { padding: 9px 18px; border-radius: 20px; font-size: 14px; text-decoration: none; border: 1px solid var(--border); background: var(--surface); color: var(--text-secondary); }
+  .secciones a.activa { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+
 </style>
 </head>
 <body>
-<div class="screen">
+<div class="screen ancha">
   <div class="topbar">
     <button class="icon-btn" id="backBtn" title="Volver" aria-label="Volver">&#8592;</button>
     <div class="topbar-info">
-      <p class="topbar-obra">Oficina</p>
-      <p class="topbar-title">Vacaciones</p>
+      <p class="topbar-obra">Administración</p>
+      <p class="topbar-title">Pagos y recibís</p>
     </div>
   </div>
+
+  <nav class="secciones" aria-label="Secciones">
+    <a href="pagos.html">Pagos de horas extra</a>
+    <a href="vacaciones.html" class="activa">Vacaciones</a>
+  </nav>
+
+  <div class="dos-col">
 
   <div class="card">
     <h1 style="font-size:16px;margin-bottom:14px;">Apuntar vacaciones</h1>
@@ -66,6 +82,7 @@
     <div id="lista"><div class="loading">Cargando...</div></div>
   </div>
 </div>
+</div>
 
 <script type="module">
   import { requireAuth } from "./js/auth.js";
@@ -74,7 +91,7 @@
     collection, getDocs, addDoc, deleteDoc, doc, setDoc, query, where, serverTimestamp
   } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
   import {
-    fechaLocal, horaLocal, fechaBonita, puedeGestionarFichajes, esc, avatar, nombreDocumento, cargarConfig
+    fechaLocal, horaLocal, fechaBonita, esAdmin, esc, avatar, nombreDocumento, cargarConfig
   } from "./js/registro.js";
   import { EMPRESA, cargarLugar, nuevoPDF, cabeceraPDF, firmasPDF, parrafoPDF } from "./js/documentos.js";
 
@@ -261,8 +278,8 @@
   });
 
   requireAuth(async (user, p) => {
-    if (!puedeGestionarFichajes(p)) {
-      alert("Esta pantalla es solo para oficina y administración.");
+    if (!esAdmin(p)) {
+      alert("Esta pantalla es solo para administración.");
       window.location.href = "dashboard.html";
       return;
     }
