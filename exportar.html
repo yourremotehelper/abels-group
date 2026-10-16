@@ -11,14 +11,15 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
 </head>
 <body>
-<div class="screen">
+<div class="screen ancha">
   <div class="topbar">
     <button class="icon-btn" id="backBtn" title="Volver" aria-label="Volver">&#8592;</button>
     <div class="topbar-info">
-      <p class="topbar-obra">Oficina</p>
-      <p class="topbar-title">Exportar control de asistencia</p>
+      <p class="topbar-obra">👥 RRHH</p>
+      <p class="topbar-title">📤 Exportar asistencia</p>
     </div>
   </div>
+  <nav class="secciones" id="secciones"></nav>
 
   <div class="card">
     <p style="font-size:13px;color:var(--text-secondary);margin:0 0 16px;">Descarga el control interno de asistencia y horas. Es un documento de la oficina: el registro oficial de jornada sigue siendo el sistema de fichaje actual.</p>
@@ -51,6 +52,7 @@
 
 <script type="module">
   import { requireAuth } from "./js/auth.js";
+  import { pintarSecciones } from "./js/menu.js";
   import { db } from "./js/firebase-config.js";
   import {
     collection, getDocs, query, where
@@ -58,6 +60,7 @@
   import {
     fechaLocal, fechaBonita, puedeGestionarFichajes, cargarConfig, horasTrabajadas, TIPOS_AUSENCIA, nombreDocumento
   } from "./js/registro.js";
+  pintarSecciones("rrhh", "exportar");
   // En los documentos sale siempre el nombre real (si está puesto en el directorio)
   const nombreReal = (id, porDefecto) => nombreDocumento(empleados.find(e => e.id === id)) || porDefecto || "";
   let cfg = null;
@@ -288,6 +291,7 @@
   }));
 
   requireAuth(async (user, perfil) => {
+    pintarSecciones("rrhh", "exportar", perfil);
     if (!puedeGestionarFichajes(perfil)) {
       alert("Solo oficina y administración pueden exportar fichajes.");
       window.location.href = "dashboard.html";
