@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<title>Abel's | Registro manual</title>
+<title>Abel's | Registro de asistencia</title>
 <link rel="manifest" href="manifest.json">
 <link rel="stylesheet" href="css/styles.css">
 <style>
@@ -19,6 +19,13 @@
   .hist-item { font-size: 13px; padding: 8px 0; border-bottom: 1px solid var(--border); color: var(--text-secondary); }
   .hist-item:last-child { border-bottom: none; }
   .hist-item b { color: var(--text); font-weight: 600; }
+  .fila.falta { border-left: 4px solid var(--danger); padding-left: 10px; margin-left: -14px; }
+  .fila.falta.cambiada { background: var(--accent-bg); border-left-color: var(--accent); }
+  .chip.mal { background: var(--danger); color: #fff; font-weight: 600; }
+  .faltan-box { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .faltan-num { font-size: 22px; font-weight: 700; color: var(--danger); font-variant-numeric: tabular-nums; }
+  .faltan-num.ok { color: var(--success); }
+  .sel-motivo { margin: 8px 0 0 !important; height: 38px !important; font-size: 13px !important; border-color: var(--danger) !important; }
 </style>
 </head>
 <body>
@@ -27,12 +34,12 @@
     <button class="icon-btn" id="backBtn" title="Volver" aria-label="Volver">&#8592;</button>
     <div class="topbar-info">
       <p class="topbar-obra">Oficina</p>
-      <p class="topbar-title">Registro manual y correcciones</p>
+      <p class="topbar-title">Registro de asistencia</p>
     </div>
   </div>
 
   <div class="card">
-    <label for="fecha">Día</label>
+    <label for="fecha">Día que se apunta</label>
     <input type="date" id="fecha">
 
     <label for="motivo">Motivo de los cambios</label>
@@ -55,6 +62,23 @@
   <div class="error-msg" id="errorMsg"></div>
   <div class="error-msg" id="okMsg" style="color:var(--success-dark);background:var(--success-bg);"></div>
 
+  <div class="card faltan-box" id="faltanBox">
+    <div>
+      <p style="font-size:13px;color:var(--text-secondary);margin:0;">Sin apuntar y sin motivo</p>
+      <span class="faltan-num" id="faltanNum">–</span>
+    </div>
+  </div>
+
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+    <select id="filtroEstado" class="campo" aria-label="Filtrar por estado">
+      <option value="">Todos</option>
+      <option value="falta">Faltan por apuntar</option>
+      <option value="apuntado">Ya apuntados</option>
+      <option value="ausente">Ausentes (baja, vacaciones...)</option>
+    </select>
+    <select id="filtroObra" class="campo" aria-label="Filtrar por obra"><option value="">Todas las obras</option></select>
+  </div>
+
   <input type="text" id="buscador" placeholder="Buscar trabajador..." autocomplete="off">
 
   <div class="card" id="lista">
@@ -76,10 +100,11 @@
   import { requireAuth } from "./js/auth.js";
   import { db, auth } from "./js/firebase-config.js";
   import {
-    collection, getDocs, query, where, doc, setDoc, deleteDoc, serverTimestamp
+    collection, getDocs, query, where, doc, setDoc, deleteDoc, addDoc, serverTimestamp
   } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
   import {
     ayer, fechaBonita, puedeGestionarFichajes, registrarHistorial, esc, avatar,
+    diaLaborableAnterior, fechaLocal, horaLocal,
     cargarConfig, extraSugerida, horasTrabajadas, textoHoras, cargarAusenciasDelDia, TIPOS_AUSENCIA
   } from "./js/registro.js";
 
@@ -153,6 +178,10 @@
       cargarAusenciasDelDia(fecha)
     ]);
     ausencias = aus;
+    const fo = document.getElementById("filtroObra"), foSel = fo.value;
+    fo.innerHTML = '<option value="">Todas las obras</option>' + obrasSnap.docs
+      .map(d => ({ id: d.id, ...d.data() })).sort((x, y) => (x.nombre || "").localeCompare(y.nombre || ""))
+      .map(o => `<option value="${o.id}" ${o.id === foSel ? "selected" : ""}>${esc(o.nombre)}</option>`).join("");
     vehiculos = vehSnap.docs.map(d => ({ id: d.id, ...d.data() }))
       .sort((a, b) => (a.nombre || "").localeCompare(b.nombre || ""));
     obras = obrasSnap.docs.map(d => ({ id: d.id, ...d.data() }))
@@ -195,7 +224,7 @@
           extra: Number(ex.horasExtra || 0), extraTocada: !!ex.horasExtra });
       }
     });
-    filas.sort((a, b) => a.nombre.localeCompare(b.nombre));
+    filas.sort((a, b) => (esFalta(b) - esFalta(a)) || a.nombre.localeCompare(b.nombre));
 
     pintar();
     cargarHistorial();
@@ -229,11 +258,34 @@
     return `${textoHoras(t)} trabajadas · ${textoHoras(Math.max(0, t - (Number(f.extra) || 0)))} normales`;
   }
 
+  // Falta: no tiene asistencia apuntada (ni la está apuntando ahora) ni motivo de ausencia
+  function esFalta(f) {
+    const dia = new Date(fechaInput.value + "T12:00:00").getDay();
+    if (dia === 0 || dia === 6) return false;   // fin de semana: solo se apunta quien venga a hacer extra
+    return !f.existente && !ausencias[f.empId] && !f.entrada;
+  }
+
+  const opcionesMotivo = () => '<option value="">No vino: elegir motivo...</option>' +
+    Object.entries(TIPOS_AUSENCIA).map(([k, v]) => `<option value="${k}">${esc(v)}</option>`).join("");
+
+  async function apuntarAusencia(f, tipo) {
+    const fecha = fechaInput.value;
+    await addDoc(collection(db, "ausencias"), {
+      empleadoId: f.empId, empleadoNombre: f.nombre, tipo, desde: fecha, hasta: fecha, nota: "",
+      creadoPorUid: auth.currentUser ? auth.currentUser.uid : "",
+      creadoPorNombre: perfil.nombre || "",
+      creadoEn: `${fechaLocal()} ${horaLocal()}`,
+      registradoEn: serverTimestamp()
+    });
+    ausencias[f.empId] = { tipo, desde: fecha, hasta: fecha };
+    pintar();
+  }
+
   function etiquetaEstado(f) {
     const e = f.existente;
     const a = ausencias[f.empId];
     if (!e && a) return `<span class="chip">${esc(TIPOS_AUSENCIA[a.tipo] || "Ausente")}</span>`;
-    if (!e) return '<span class="chip">sin registro</span>';
+    if (!e) return "";
     if (e.presenciaConfirmada === false) return '<span class="chip aviso">marcado: no estuvo en obra</span>';
     const horas = `${e.horaEntrada || "--:--"} - ${e.horaSalida || "--:--"}${e.horasExtra ? " +" + e.horasExtra + " h extra" : ""}`;
     const extra = e.modificado ? " · corregido" : (e.origen === "manual" ? " · manual" : "");
@@ -242,7 +294,20 @@
 
   function pintar() {
     const texto = buscador.value.trim().toLowerCase();
-    const visibles = filas.filter(f => !texto || f.nombre.toLowerCase().includes(texto));
+    const estado = document.getElementById("filtroEstado").value;
+    const obraF = document.getElementById("filtroObra").value;
+    const estadoDe = f => f.existente ? "apuntado" : ausencias[f.empId] ? "ausente" : "falta";
+    // Orden: primero los que faltan, luego ausentes y al final los ya apuntados (guardados)
+    const peso = { falta: 0, ausente: 1, apuntado: 2 };
+    const visibles = filas
+      .filter(f => (!texto || (f.nombre + " " + (f.emp.nombreReal || "")).toLowerCase().includes(texto))
+        && (!estado || estadoDe(f) === estado)
+        && (!obraF || f.obraId === obraF))
+      .sort((a, b) => (peso[estadoDe(a)] - peso[estadoDe(b)]) || a.nombre.localeCompare(b.nombre));
+    const n = filas.filter(esFalta).length;
+    const num = document.getElementById("faltanNum");
+    num.textContent = n === 0 ? "Ninguno ✓" : n;
+    num.classList.toggle("ok", n === 0);
 
     if (filas.length === 0) {
       lista.innerHTML = '<div class="placeholder">No hay trabajadores en el directorio.</div>';
@@ -256,7 +321,7 @@
     }
 
     lista.innerHTML = visibles.map(f => `
-      <div class="fila ${cambiada(f) ? "cambiada" : ""}" data-emp="${f.empId}">
+      <div class="fila ${cambiada(f) ? "cambiada" : ""} ${esFalta(f) ? "falta" : ""}" data-emp="${f.empId}">
         <div class="fila-cab">
           <div style="display:flex;align-items:center;gap:10px;min-width:0;">${avatar(f.emp, 36)}<p class="obra-name">${esc(f.nombre)}</p></div>
           ${etiquetaEstado(f)}
@@ -274,6 +339,7 @@
           ${cambiada(f) ? '<button class="link-btn b-deshacer">deshacer cambios</button>' : ""}
           ${f.existente ? '<button class="link-btn b-borrar" style="color:var(--danger);">borrar fichaje</button>' : ""}
         </div>
+        ${esFalta(f) ? `<select class="campo sel-motivo" aria-label="Motivo de la ausencia">${opcionesMotivo()}</select>` : ""}
       </div>
     `).join("");
 
@@ -281,6 +347,7 @@
       const f = filas.find(x => x.empId === div.dataset.emp);
       const refrescar = () => {
         div.classList.toggle("cambiada", cambiada(f));
+        div.classList.toggle("falta", esFalta(f));
         actualizarBoton();
       };
       div.querySelector(".c-obra").addEventListener("change", e => { f.obraId = e.target.value; refrescar(); });
@@ -318,6 +385,13 @@
         f.extra = e ? Number(e.horasExtra || 0) : 0;
         f.extraTocada = !!(e && e.horasExtra);
         pintar();
+      });
+      const selMotivo = div.querySelector(".sel-motivo");
+      if (selMotivo) selMotivo.addEventListener("change", async () => {
+        if (!selMotivo.value) return;
+        selMotivo.disabled = true;
+        try { await apuntarAusencia(f, selMotivo.value); }
+        catch (err) { console.error(err); alert("No se ha podido guardar el motivo. Inténtalo otra vez."); selMotivo.disabled = false; }
       });
       const bBorrar = div.querySelector(".b-borrar");
       if (bBorrar) bBorrar.addEventListener("click", () => borrar(f));
@@ -465,6 +539,8 @@
     cargar();
   });
   buscador.addEventListener("input", pintar);
+  document.getElementById("filtroEstado").addEventListener("change", pintar);
+  document.getElementById("filtroObra").addEventListener("change", pintar);
 
   window.addEventListener("beforeunload", e => {
     if (!saliendo && hayCambios()) { e.preventDefault(); e.returnValue = ""; }
@@ -480,7 +556,7 @@
     cfg = await cargarConfig();
     jornadaEntrada.value = cfg.horaEntrada;
     jornadaSalida.value = cfg.horaSalida;
-    fechaInput.value = ayer();
+    fechaInput.value = diaLaborableAnterior();
     fechaAnterior = fechaInput.value;
     try {
       await cargar();
