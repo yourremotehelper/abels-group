@@ -43,7 +43,7 @@ export function nombreRol(rol) {
 export function copiaFichaje(f) {
   if (!f) return null;
   const copia = {};
-  ["obraId", "empleadoId", "empleadoNombre", "fecha", "horaEntrada", "horaSalida", "origen", "fichadoPorNombre", "vehiculoNombre", "horasExtra"]
+  ["obraId", "empleadoId", "empleadoNombre", "fecha", "horaEntrada", "horaSalida", "origen", "fichadoPorNombre", "vehiculoNombre", "tarjetaNombre", "horasExtra"]
     .forEach(k => { if (f[k] !== undefined && f[k] !== null) copia[k] = f[k]; });
   return copia;
 }
