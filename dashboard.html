@@ -80,8 +80,11 @@
       b.addEventListener("click", () => window.location.href = destino);
       menu.appendChild(b);
     }
+    if (esAdmin(perfil)) {
+      bloque("📊", "Panel de obras", "Avance, plazos, costes, cobros y avisos de todas las obras", "panel.html", true);
+    }
     if (puedeGestionarFichajes(perfil)) {
-      bloque("📝", "Registro de asistencia", "Apuntar horas, horas extra y faltas", "registro.html", true);
+      bloque("📝", "Registro de asistencia", "Apuntar horas, horas extra y faltas", "registro.html", !esAdmin(perfil));
       bloque("👥", "RRHH", esAdmin(perfil) ? "Directorio, ausencias y vacaciones, horas extra, pagos" : "Directorio, ausencias y vacaciones, horas extra", "ausencias.html");
       bloque("⚙️", "Ajustes", "Jornada, festivos" + (esAdmin(perfil) ? ", obras y usuarios" : ""), "ajustes.html");
     } else {

@@ -1,0 +1,541 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Abel's | Panel de obras</title>
+<link rel="manifest" href="manifest.json">
+<link rel="stylesheet" href="css/styles.css">
+<style>
+  .screen.panel { max-width: 1240px; }
+  .acciones-top { display: flex; gap: 8px; }
+  .acciones-top button { width: auto; height: 36px; padding: 0 12px; font-size: 13px; }
+
+  .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 10px; margin-bottom: 14px; }
+  .kpi { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 12px 14px; }
+  .kpi .t { font-size: 12px; color: var(--text-muted); margin: 0 0 4px; }
+  .kpi .v { font-size: 22px; font-weight: 650; margin: 0; font-variant-numeric: tabular-nums; }
+  .kpi .s { font-size: 12px; color: var(--text-secondary); margin: 4px 0 0; }
+  .kpi.rojo { border-color: var(--danger); background: var(--danger-bg); }
+  .kpi.rojo .v { color: var(--danger); }
+
+  .avisos { display: grid; gap: 6px; }
+  .av { display: flex; gap: 10px; align-items: flex-start; padding: 9px 10px; border-radius: 8px; background: var(--bg); cursor: pointer; border: 1px solid transparent; }
+  .av:hover { border-color: var(--border); }
+  .av .p { width: 9px; height: 9px; border-radius: 50%; margin-top: 5px; flex-shrink: 0; }
+  .av b { font-weight: 600; }
+  .av span { font-size: 14px; }
+  .p.alta { background: var(--danger); } .p.media { background: #D9A400; } .p.ok { background: var(--success); } .p.info { background: var(--text-muted); }
+
+  .filtros-panel { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 12px; }
+  .filtros-panel .tab { font-size: 13px; }
+  .filtros-panel input { margin: 0; height: 36px; max-width: 240px; font-size: 14px; }
+
+  .tabla-wrap { overflow-x: auto; }
+  table.obras { width: 100%; border-collapse: collapse; font-size: 14px; font-variant-numeric: tabular-nums; }
+  table.obras th { text-align: left; font-size: 12px; font-weight: 600; color: var(--text-secondary); padding: 8px 8px; border-bottom: 2px solid var(--border); white-space: nowrap; }
+  table.obras td { padding: 10px 8px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  table.obras tr.fila { cursor: pointer; }
+  table.obras tr.fila:hover td { background: var(--bg); }
+  table.obras .num { text-align: right; white-space: nowrap; }
+  .sub { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
+  .neg { color: var(--danger); font-weight: 600; }
+  .barra { position: relative; height: 8px; background: var(--border); border-radius: 4px; min-width: 90px; margin-top: 5px; overflow: visible; }
+  .barra i { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 4px; background: var(--success); }
+  .barra i.amarillo { background: #D9A400; } .barra i.mal { background: var(--danger); }
+  .barra em { position: absolute; top: -3px; width: 2px; height: 14px; background: var(--text); border-radius: 1px; }
+
+  /* Ficha de la obra */
+  dialog.ficha { width: min(980px, 100vw); max-width: 100vw; max-height: 100vh; height: 100%; margin: 0 0 0 auto; padding: 0; border: none; background: var(--bg); color: var(--text); }
+  dialog.ficha::backdrop { background: rgba(0,0,0,.35); }
+  .ficha-cab { position: sticky; top: 0; z-index: 2; display: flex; gap: 10px; align-items: center; padding: 14px 16px; background: var(--surface); border-bottom: 1px solid var(--border); }
+  .ficha-cab h2 { font-size: 17px; margin: 0; flex: 1; }
+  .ficha-cab button { width: auto; height: 36px; padding: 0 14px; font-size: 14px; }
+  .ficha-cuerpo { padding: 16px; display: grid; grid-template-columns: 1fr 1fr; gap: 14px; align-items: start; }
+  .ficha-cuerpo .card { margin: 0; }
+  .ficha-cuerpo .ancho { grid-column: 1 / -1; }
+  @media (max-width: 760px) { .ficha-cuerpo { grid-template-columns: 1fr; } }
+  .card h3 { font-size: 15px; margin: 0 0 10px; }
+  .rejilla { display: grid; grid-template-columns: 1fr 1fr; gap: 0 10px; }
+  .rejilla input, .rejilla select { margin-bottom: 10px; }
+  .rejilla .todo { grid-column: 1 / -1; }
+  .linea { display: grid; grid-template-columns: 1fr 70px 30px; gap: 8px; align-items: center; margin-bottom: 6px; }
+  .linea input { margin: 0 !important; height: 36px !important; font-size: 14px !important; }
+  .linea.cobro { grid-template-columns: 1fr 100px 135px 70px 30px; }
+  .linea .x { border: none; background: none; color: var(--text-muted); font-size: 16px; cursor: pointer; }
+  .linea label.chk { display: flex; gap: 4px; align-items: center; margin: 0; font-size: 12px; }
+  .linea label.chk input { width: auto; height: auto !important; }
+  @media (max-width: 560px) { .linea.cobro { grid-template-columns: 1fr 1fr; } }
+  .mini-btns { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
+  .mini-btns button { width: auto; height: 34px; padding: 0 12px; font-size: 13px; }
+  .datos { display: grid; grid-template-columns: 1fr auto; gap: 6px 12px; font-size: 14px; }
+  .datos dt { color: var(--text-secondary); } .datos dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; font-weight: 500; }
+  .datos .total { font-weight: 700; border-top: 1px solid var(--border); padding-top: 6px; }
+  .lista-simple { list-style: none; padding: 0; margin: 0; font-size: 14px; }
+  .lista-simple li { padding: 7px 0; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; gap: 10px; }
+  .lista-simple li:last-child { border-bottom: none; }
+  textarea.notas { width: 100%; min-height: 80px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; font: inherit; font-size: 14px; background: var(--bg); color: var(--text); resize: vertical; }
+  table.obras .chip { white-space: nowrap; margin: 0 2px 3px 0; }
+  .guardado { font-size: 13px; color: var(--success-dark); }
+
+  /* Coste de la mano de obra */
+  dialog.costes { width: min(520px, 94vw); border: none; border-radius: 14px; padding: 18px; }
+  dialog.costes::backdrop { background: rgba(0,0,0,.35); }
+  .fila-coste { display: grid; grid-template-columns: 1fr 110px; gap: 10px; align-items: center; padding: 6px 0; border-bottom: 1px solid var(--border); font-size: 14px; }
+  .fila-coste input { margin: 0; height: 36px; text-align: right; }
+
+  /* En el móvil la tabla pasa a tarjetas */
+  @media (max-width: 760px) {
+    table.obras thead { display: none; }
+    table.obras, table.obras tbody, table.obras tr, table.obras td { display: block; width: 100%; }
+    table.obras tr.fila { border: 1px solid var(--border); border-radius: 12px; margin-bottom: 10px; padding: 6px 4px; background: var(--surface); }
+    table.obras td { border: none; padding: 5px 8px; display: flex; justify-content: space-between; gap: 10px; }
+    table.obras td::before { content: attr(data-t); font-size: 12px; color: var(--text-muted); }
+    table.obras td.primera { display: none; }
+    table.obras td[data-t="Obra"] { display: block; }
+    table.obras td[data-t="Obra"]::before { content: none; }
+    table.obras td > div { text-align: right; }
+    table.obras td[data-t="Obra"] > div { text-align: left; }
+    table.obras tr.fila.n-alta { border-left: 4px solid var(--danger); }
+    table.obras tr.fila.n-media { border-left: 4px solid #D9A400; }
+    table.obras tr.fila.n-ok { border-left: 4px solid var(--success); }
+    table.obras td .barra { flex: 1; max-width: 140px; }
+    table.obras .num { text-align: right; }
+    .acciones-top .txt { display: none; }
+  }
+</style>
+</head>
+<body>
+<div class="screen panel">
+  <div class="topbar">
+    <button class="icon-btn" id="backBtn" title="Volver" aria-label="Volver">&#8592;</button>
+    <div class="topbar-info">
+      <p class="topbar-obra">Dirección</p>
+      <p class="topbar-title">📊 Panel de obras</p>
+    </div>
+    <div class="acciones-top">
+      <button class="secondary" id="costesBtn" title="Coste por hora de cada trabajador">👷 <span class="txt">Coste mano de obra</span></button>
+      <button class="secondary" id="recargarBtn" title="Volver a cargar los datos">↻ <span class="txt">Actualizar</span></button>
+    </div>
+  </div>
+
+  <div id="contenido"><div class="card"><div class="loading">Cargando todas las obras…</div></div></div>
+</div>
+
+<dialog class="ficha" id="ficha"></dialog>
+<dialog class="costes" id="costes"></dialog>
+
+<script type="module">
+  import { requireAuth } from "./js/auth.js";
+  import { db } from "./js/firebase-config.js";
+  import {
+    collection, getDocs, doc, updateDoc, setDoc
+  } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+  import { esAdmin, esc, euros, fechaLocal, fechaBonita, cargarConfig, horasTrabajadas } from "./js/registro.js";
+  import { ESTADOS, FASES_TIPICAS, gestionPorDefecto, calcularObra, totales } from "./js/panel-calculos.js";
+
+  const $ = (id) => document.getElementById(id);
+  const contenido = $("contenido");
+  const eur0 = (n) => { const v = Math.round(Number(n) || 0); return (v < 0 ? "-" : "") + String(Math.abs(v)).replace(/\B(?=(\d{3})+(?!\d))/g, ".") + " €"; };
+  const pct = (n) => (n === null || n === undefined ? "—" : Math.round(n) + " %");
+  const nuevoId = () => Math.random().toString(36).slice(2, 10);
+
+  let obras = [], datos = {}, empleados = [], tarifas = {}, costeDefecto = 0, cfg = null;
+  let calculadas = [], filtro = "activas", busqueda = "";
+
+  $("backBtn").addEventListener("click", () => (window.location.href = "dashboard.html"));
+  $("recargarBtn").addEventListener("click", () => cargarTodo());
+  $("costesBtn").addEventListener("click", () => abrirCostes());
+
+  // ---------- Datos ----------
+  async function cargarTodo() {
+    contenido.innerHTML = '<div class="card"><div class="loading">Cargando todas las obras…</div></div>';
+    try {
+      const [oSnap, eSnap, tSnap, config] = await Promise.all([
+        getDocs(collection(db, "obras")),
+        getDocs(collection(db, "empleados")),
+        getDocs(collection(db, "tarifas")).catch(() => ({ docs: [] })),
+        cargarConfig()
+      ]);
+      cfg = config;
+      obras = oSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      empleados = eSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      tarifas = {}; costeDefecto = 0;
+      tSnap.docs.forEach((d) => {
+        if (d.id === "_empresa") costeDefecto = Number(d.data().costeHoraDefecto) || 0;
+        else tarifas[d.id] = d.data();
+      });
+      const sub = (id, c) => getDocs(collection(db, "obras", id, c)).then((s) => s.docs.map((x) => ({ id: x.id, ...x.data() }))).catch(() => []);
+      datos = {};
+      await Promise.all(obras.map(async (o) => {
+        const [fichajes, gastos, necesidades, incidencias] = await Promise.all([
+          sub(o.id, "fichajes"), sub(o.id, "gastos"), sub(o.id, "necesidades"), sub(o.id, "incidencias")
+        ]);
+        datos[o.id] = { fichajes, gastos, necesidades, incidencias };
+      }));
+      recalcular();
+    } catch (err) {
+      console.error(err);
+      contenido.innerHTML = `<div class="card"><div class="placeholder">No se han podido cargar las obras.<br><span style="font-size:11px;">${esc(err.message || err)}</span></div></div>`;
+    }
+  }
+
+  const costeHora = (empId) => {
+    const t = tarifas[empId];
+    return t && t.costeHora !== undefined && t.costeHora !== "" ? Number(t.costeHora) : costeDefecto;
+  };
+
+  function recalcular() {
+    const op = { hoy: fechaLocal(), costeHora, horasTrabajadas: (a, b) => horasTrabajadas(a, b, cfg) };
+    calculadas = obras.map((o) => calcularObra(o, datos[o.id] || {}, op));
+    pintar();
+  }
+
+  // ---------- Pantalla principal ----------
+  function visibles() {
+    return calculadas.filter((r) => {
+      if (filtro === "activas" && !["enCurso", "parada", "porEmpezar"].includes(r.estado)) return false;
+      if (filtro !== "activas" && filtro !== "todas" && r.estado !== filtro) return false;
+      if (busqueda) {
+        const t = (r.nombre + " " + r.direccion + " " + (r.g.cliente || "")).toLowerCase();
+        if (!t.includes(busqueda)) return false;
+      }
+      return true;
+    });
+  }
+
+  function pintar() {
+    const activas = calculadas.filter((r) => ["enCurso", "parada", "porEmpezar"].includes(r.estado));
+    const t = totales(activas);
+    const tTodas = totales(calculadas);
+    const orden = { alta: 0, media: 1, info: 2 };
+    const avisos = calculadas
+      .flatMap((r) => r.alertas.filter((a) => a.nivel !== "info").map((a) => ({ ...a, obra: r })))
+      .sort((a, b) => orden[a.nivel] - orden[b.nivel]);
+
+    let html = `
+      <div class="kpis">
+        <div class="kpi"><p class="t">Obras en curso</p><p class="v">${t.enCurso}</p><p class="s">${activas.length - t.enCurso} paradas o por empezar</p></div>
+        <div class="kpi"><p class="t">Facturación en marcha</p><p class="v">${eur0(t.venta)}</p><p class="s">sin IVA · obras activas</p></div>
+        <div class="kpi ${tTodas.vencido > 0 ? "rojo" : ""}"><p class="t">Pendiente de cobro</p><p class="v">${eur0(tTodas.pendienteCobro)}</p><p class="s">${tTodas.vencido > 0 ? eur0(tTodas.vencido) + " vencido" : "nada vencido"}</p></div>
+        <div class="kpi"><p class="t">Coste hasta hoy</p><p class="v">${eur0(t.costeReal)}</p><p class="s">de ${eur0(t.costePrevisto)} previstos</p></div>
+        <div class="kpi ${t.margenEstimado < 0 ? "rojo" : ""}"><p class="t">Margen estimado</p><p class="v">${eur0(t.margenEstimado)}</p><p class="s">previsto: ${eur0(t.margenPrevisto)}</p></div>
+        <div class="kpi ${t.urgentes + t.incidencias > 0 ? "" : ""}"><p class="t">Incidencias / urgentes</p><p class="v">${t.incidencias} / ${t.urgentes}</p><p class="s">${Math.round(t.horas7)} h trabajadas esta semana</p></div>
+      </div>
+
+      <div class="card">
+        <h1 style="font-size:16px;margin:0 0 10px;">⚠️ Requiere atención</h1>
+        ${avisos.length ? `<div class="avisos">${avisos.slice(0, 12).map((a) => `
+          <div class="av" data-obra="${a.obra.id}"><i class="p ${a.nivel}"></i><span><b>${esc(a.obra.nombre)}</b> · ${esc(a.texto)}</span></div>`).join("")}
+          ${avisos.length > 12 ? `<p class="sub">y ${avisos.length - 12} aviso${avisos.length - 12 > 1 ? "s" : ""} más en las obras de abajo</p>` : ""}</div>`
+          : '<p style="margin:0;color:var(--success-dark);">Todo en orden: no hay avisos.</p>'}
+      </div>
+
+      <div class="card">
+        <div class="filtros-panel">
+          ${[["activas", "Activas"], ["enCurso", "En curso"], ["porEmpezar", "Por empezar"], ["parada", "Paradas"], ["presupuesto", "Presupuestadas"], ["terminada", "Terminadas"], ["todas", "Todas"]]
+            .map(([k, n]) => `<div class="tab ${filtro === k ? "active" : ""}" data-filtro="${k}">${n}</div>`).join("")}
+          <input type="text" id="buscar" placeholder="Buscar obra o cliente" value="${esc(busqueda)}">
+        </div>
+        <div class="tabla-wrap"><table class="obras">
+          <thead><tr>
+            <th></th><th>Obra</th><th>Avance y plazo</th><th class="num">Venta</th><th>Coste</th><th>Cobros</th><th class="num">Equipo (7 días)</th><th>Pendientes</th>
+          </tr></thead>
+          <tbody>${filas()}</tbody>
+        </table></div>
+        <p class="sub" style="margin-top:10px;">Importes sin IVA. El coste suma los gastos apuntados y las horas trabajadas por su coste/hora (botón «Coste mano de obra»). La raya negra de la barra de avance marca dónde debería ir según el plazo.</p>
+      </div>`;
+    contenido.innerHTML = html;
+
+    contenido.querySelectorAll("[data-filtro]").forEach((el) => el.addEventListener("click", () => { filtro = el.dataset.filtro; pintar(); }));
+    const b = $("buscar");
+    b.addEventListener("input", () => { busqueda = b.value.trim().toLowerCase(); const pos = b.selectionStart; pintar(); const nb = $("buscar"); nb.focus(); nb.setSelectionRange(pos, pos); });
+    contenido.querySelectorAll("[data-obra]").forEach((el) => el.addEventListener("click", () => abrirFicha(el.dataset.obra)));
+  }
+
+  function filas() {
+    const lista = visibles();
+    if (!lista.length) return `<tr><td colspan="8"><div class="placeholder">No hay obras con este filtro.</div></td></tr>`;
+    const orden = { alta: 0, media: 1, ok: 2 };
+    return lista.sort((a, b) => orden[a.nivel] - orden[b.nivel] || a.nombre.localeCompare(b.nombre)).map((r) => {
+      const plazo = r.diasRestantes === null ? "sin fecha de fin"
+        : r.estado === "terminada" ? "terminada"
+        : r.diasRestantes < 0 ? `<span class="neg">${-r.diasRestantes} días de retraso</span>`
+        : `quedan ${r.diasRestantes} días · fin ${fechaBonita(r.g.fechaFinPrevista)}`;
+      const lento = r.tiempo !== null && r.avance < r.tiempo - 15;
+      const consumoCls = r.consumo === null ? "" : r.consumo > 100 ? "mal" : r.consumo > r.avance + 10 ? "amarillo" : "";
+      return `<tr class="fila n-${r.nivel}" data-obra="${r.id}">
+        <td class="primera" style="width:14px;"><i class="p ${r.nivel}" style="display:inline-block;width:10px;height:10px;border-radius:50%;margin-top:5px;" title="${r.nivel === "alta" ? "Hay avisos importantes" : r.nivel === "media" ? "Hay avisos" : "Al día"}"></i></td>
+        <td data-t="Obra"><div><b>${esc(r.nombre)}</b><div class="sub">${esc(r.g.cliente || r.direccion || "")} · ${ESTADOS[r.estado] || r.estado}</div>${r.alertas.some((a) => a.tipo === "datos") ? '<div class="sub" style="color:var(--accent-dark);">✎ faltan datos de gestión</div>' : ""}</div></td>
+        <td data-t="Avance"><div style="min-width:150px;">${Math.round(r.avance)} %<div class="barra"><i class="${lento ? "amarillo" : ""}" style="width:${r.avance}%"></i>${r.tiempo !== null && r.estado !== "terminada" ? `<em style="left:calc(${r.tiempo}% - 1px)"></em>` : ""}</div><div class="sub">${plazo}</div></div></td>
+        <td data-t="Venta" class="num"><div>${r.venta ? eur0(r.venta) : "—"}${r.margenEstimado !== null ? `<div class="sub ${r.margenEstimado < 0 ? "neg" : ""}">margen ${eur0(r.margenEstimado)}</div>` : ""}</div></td>
+        <td data-t="Coste"><div style="min-width:130px;">${eur0(r.costeReal)}${r.costePrevisto ? ` <span class="sub">de ${eur0(r.costePrevisto)}</span><div class="barra"><i class="${consumoCls}" style="width:${Math.min(100, r.consumo)}%"></i></div>` : '<div class="sub">sin coste previsto</div>'}</div></td>
+        <td data-t="Cobros"><div style="min-width:120px;">${r.venta ? `${eur0(r.cobrado)} <span class="sub">cobrado</span><div class="barra"><i style="width:${Math.min(100, r.cobradoPct)}%"></i></div>` : "—"}${r.vencido ? `<div class="sub neg">${eur0(r.vencido)} vencido</div>` : r.proximoCobro ? `<div class="sub">próximo: ${eur0(r.proximoCobro.importe)} el ${fechaBonita(r.proximoCobro.fechaPrevista)}</div>` : ""}</div></td>
+        <td data-t="Equipo (7 días)" class="num"><div>${r.personas7} pers.<div class="sub">${Math.round(r.horas7)} h · ${r.ultimaActividad ? "últ. " + fechaBonita(r.ultimaActividad) : "sin actividad"}</div></div></td>
+        <td data-t="Pendientes"><div>${r.incidencias.length ? `<span class="chip aviso">${r.incidencias.length} incid.</span> ` : ""}${r.urgentes.length ? `<span class="chip aviso" style="background:var(--danger-bg);color:var(--danger);">${r.urgentes.length} urgente${r.urgentes.length > 1 ? "s" : ""}</span> ` : ""}${r.materiales.length ? `<span class="chip">${r.materiales.length} por comprar</span>` : ""}${!r.incidencias.length && !r.urgentes.length && !r.materiales.length ? '<span class="chip ok">nada</span>' : ""}<div class="sub">tareas ${r.tareasHechas}/${r.tareas.length}</div></div></td>
+      </tr>`;
+    }).join("");
+  }
+
+  // ---------- Ficha de una obra ----------
+  let fichaObra = null, g = null;
+
+  function abrirFicha(id) {
+    fichaObra = obras.find((o) => o.id === id);
+    if (!fichaObra) return;
+    g = gestionPorDefecto(JSON.parse(JSON.stringify(fichaObra.gestion || {})));
+    pintarFicha();
+    $("ficha").showModal();
+  }
+
+  function resultadoActual() {
+    const op = { hoy: fechaLocal(), costeHora, horasTrabajadas: (a, b) => horasTrabajadas(a, b, cfg) };
+    return calcularObra({ ...fichaObra, gestion: g }, datos[fichaObra.id] || {}, op);
+  }
+
+  function pintarFicha(msg = "") {
+    const r = resultadoActual();
+    const d = datos[fichaObra.id] || {};
+    const f = $("ficha");
+    f.innerHTML = `
+      <div class="ficha-cab">
+        <button class="secondary" id="cerrarFicha" aria-label="Cerrar">✕</button>
+        <h2>${esc(fichaObra.nombre || "Obra")}</h2>
+        <span class="guardado" id="msgFicha">${msg}</span>
+        <button class="secondary" id="abrirObra" title="Ver gastos, incidencias y pendientes de la obra">Abrir obra</button>
+        <button class="primary" id="guardarFicha">Guardar</button>
+      </div>
+      <div class="ficha-cuerpo">
+        ${r.alertas.length ? `<div class="card ancho"><h3>Avisos</h3><div class="avisos">${r.alertas.map((a) => `<div class="av" style="cursor:default;"><i class="p ${a.nivel}"></i><span>${esc(a.texto)}</span></div>`).join("")}</div></div>` : ""}
+
+        <div class="card">
+          <h3>Datos de la obra</h3>
+          <div class="rejilla">
+            <div class="todo"><label>Estado</label><select class="campo" data-g="estado">${Object.entries(ESTADOS).map(([k, n]) => `<option value="${k}" ${g.estado === k ? "selected" : ""}>${n}</option>`).join("")}</select></div>
+            <div><label>Cliente</label><input type="text" data-g="cliente" value="${esc(g.cliente)}"></div>
+            <div><label>Teléfono</label><input type="text" data-g="telefono" value="${esc(g.telefono)}" inputmode="tel"></div>
+            <div><label>Inicio</label><input type="date" data-g="fechaInicio" value="${esc(g.fechaInicio)}"></div>
+            <div><label>Fin previsto</label><input type="date" data-g="fechaFinPrevista" value="${esc(g.fechaFinPrevista)}"></div>
+            <div><label>Precio de venta (sin IVA)</label><input type="number" step="0.01" data-g="venta" value="${esc(g.venta)}" placeholder="0,00"></div>
+            <div><label>Coste previsto</label><input type="number" step="0.01" data-g="costePrevisto" value="${esc(g.costePrevisto)}" placeholder="0,00"></div>
+            ${g.estado === "terminada" ? `<div class="todo"><label>Fecha de fin real</label><input type="date" data-g="fechaFinReal" value="${esc(g.fechaFinReal)}"></div>` : ""}
+          </div>
+          <p class="sub" style="margin:0;">El coste previsto es lo que calculas que te costará la obra (materiales, mano de obra y subcontratas). Sirve para avisar si se dispara.</p>
+        </div>
+
+        <div class="card">
+          <h3>Dinero</h3>
+          <dl class="datos">
+            <dt>Precio de venta</dt><dd>${euros(r.venta)}</dd>
+            <dt>Coste previsto</dt><dd>${euros(r.costePrevisto)}</dd>
+            <dt>Margen previsto</dt><dd>${r.margenPrevisto === null ? "—" : euros(r.margenPrevisto)}</dd>
+            <dt style="margin-top:8px;">Gastos apuntados</dt><dd style="margin-top:8px;">${euros(r.gastos)}</dd>
+            <dt>Mano de obra (${r.horas.toFixed(1).replace(".", ",")} h)</dt><dd>${euros(r.costeMO)}</dd>
+            <dt class="total">Coste hasta hoy</dt><dd class="total">${euros(r.costeReal)}${r.consumo !== null ? ` · ${pct(r.consumo)}` : ""}</dd>
+            <dt>Coste estimado al terminar</dt><dd>${euros(r.costeEstimado)}</dd>
+            <dt class="total">Margen estimado</dt><dd class="total ${r.margenEstimado < 0 ? "neg" : ""}">${r.margenEstimado === null ? "—" : euros(r.margenEstimado)}</dd>
+            <dt style="margin-top:8px;">Cobrado</dt><dd style="margin-top:8px;">${euros(r.cobrado)}${r.cobradoPct !== null ? ` · ${pct(r.cobradoPct)}` : ""}</dd>
+            <dt>Pendiente de cobro</dt><dd>${euros(r.pendienteCobro)}</dd>
+          </dl>
+          ${!costeDefecto && !Object.values(tarifas).some((t) => t.costeHora) ? '<p class="sub" style="margin:10px 0 0;">⚠️ Aún no hay coste por hora de la mano de obra: pon uno en «Coste mano de obra» para que cuenten las horas.</p>' : ""}
+        </div>
+
+        <div class="card">
+          <h3>Avance por fases · ${Math.round(r.avance)} %</h3>
+          ${g.fases.length ? g.fases.map((fa, i) => `
+            <div class="linea">
+              <input type="text" data-fase="${i}" data-k="nombre" value="${esc(fa.nombre)}" placeholder="Fase" aria-label="Fase">
+              <input type="number" min="0" max="100" step="5" data-fase="${i}" data-k="avance" value="${esc(fa.avance ?? 0)}" aria-label="% hecho" title="% hecho">
+              <button class="x" data-quitar-fase="${i}" title="Quitar fase" aria-label="Quitar fase">✕</button>
+            </div>`).join("") : `
+            <p class="sub" style="margin:0 0 8px;">Sin fases. Puedes poner el avance a mano o crear fases (el avance será la media de las fases).</p>
+            <label>Avance a mano (%)</label><input type="number" min="0" max="100" step="5" data-g="avanceManual" value="${esc(g.avanceManual)}">`}
+          <div class="mini-btns">
+            <button class="secondary" id="anadirFase">+ Fase</button>
+            ${g.fases.length ? "" : '<button class="secondary" id="fasesTipicas">Usar fases típicas de reforma</button>'}
+          </div>
+          ${r.tiempo !== null ? `<p class="sub" style="margin:10px 0 0;">Según el plazo debería ir por el ${pct(r.tiempo)}.</p>` : ""}
+        </div>
+
+        <div class="card ancho">
+          <h3>Cobros</h3>
+          ${g.cobros.length ? g.cobros.map((c, i) => `
+            <div class="linea cobro">
+              <input type="text" data-cobro="${i}" data-k="concepto" value="${esc(c.concepto)}" placeholder="Concepto (p. ej. 30 % al inicio)">
+              <input type="number" step="0.01" data-cobro="${i}" data-k="importe" value="${esc(c.importe)}" placeholder="Importe">
+              <input type="date" data-cobro="${i}" data-k="fechaPrevista" value="${esc(c.fechaPrevista)}" title="Fecha prevista de cobro">
+              <label class="chk"><input type="checkbox" data-cobro="${i}" data-k="cobrado" ${c.cobrado ? "checked" : ""}> cobrado</label>
+              <button class="x" data-quitar-cobro="${i}" title="Quitar cobro" aria-label="Quitar cobro">✕</button>
+            </div>`).join("") : '<p class="sub" style="margin:0 0 8px;">Apunta los pagos acordados con el cliente (señal, certificaciones, final) y márcalos al cobrarlos.</p>'}
+          <div class="mini-btns">
+            <button class="secondary" id="anadirCobro">+ Cobro</button>
+            ${g.cobros.length || !Number(g.venta) ? "" : '<button class="secondary" id="cobrosTipicos">30 % · 40 % · 30 %</button>'}
+          </div>
+          ${g.cobros.length && Math.abs(g.cobros.reduce((s, c) => s + (Number(c.importe) || 0), 0) - (Number(g.venta) || 0)) > 1 && Number(g.venta) ? `<p class="sub neg" style="margin:8px 0 0;">Los cobros suman ${euros(g.cobros.reduce((s, c) => s + (Number(c.importe) || 0), 0))} y la venta es ${euros(g.venta)}.</p>` : ""}
+        </div>
+
+        <div class="card">
+          <h3>Equipo · ${r.horas.toFixed(1).replace(".", ",")} h en total</h3>
+          ${r.trabajadores.length ? `<ul class="lista-simple">${r.trabajadores.slice(0, 8).map((t) => `<li><span>${esc(t.nombre)}</span><span>${t.dias} días · ${t.horas.toFixed(1).replace(".", ",")} h${t.coste ? " · " + eur0(t.coste) : ""}</span></li>`).join("")}</ul>` : '<p class="sub" style="margin:0;">Aún no hay asistencia apuntada en esta obra.</p>'}
+          <h3 style="margin-top:14px;">Últimos gastos · ${euros(r.gastos)}</h3>
+          ${r.ultimosGastos.length ? `<ul class="lista-simple">${r.ultimosGastos.map((x) => `<li><span>${esc(x.concepto)} <span class="sub">${fechaBonita(x.fecha)}</span></span><span>${euros(x.importe)}</span></li>`).join("")}</ul>` : '<p class="sub" style="margin:0;">Sin gastos apuntados.</p>'}
+        </div>
+
+        <div class="card">
+          <h3>Incidencias abiertas · ${r.incidencias.length}</h3>
+          ${r.incidencias.length ? `<ul class="lista-simple">${r.incidencias.map((i) => `<li><span>${esc(i.descripcion)}</span><span class="sub">${fechaBonita(i.fecha)}</span></li>`).join("")}</ul>` : '<p class="sub" style="margin:0;">Ninguna.</p>'}
+          <h3 style="margin-top:14px;">Pendiente en obra · ${r.urgentes.length} urgente${r.urgentes.length === 1 ? "" : "s"}</h3>
+          ${(d.necesidades || []).filter((n) => n.estado !== "hecho").length ? `<ul class="lista-simple">${(d.necesidades || []).filter((n) => n.estado !== "hecho").sort((a, b) => (b.prioridad === "urgente") - (a.prioridad === "urgente")).slice(0, 8).map((n) => `<li><span>${n.prioridad === "urgente" ? "🔴 " : ""}${esc(n.descripcion)} <span class="sub">${n.tipo === "material" ? "comprar" : "tarea"}</span></span><span class="sub">${n.fechaNecesaria ? "para " + fechaBonita(n.fechaNecesaria) : ""}</span></li>`).join("")}</ul>` : '<p class="sub" style="margin:0;">Nada pendiente.</p>'}
+        </div>
+
+        <div class="card ancho">
+          <h3>Notas de dirección</h3>
+          <textarea class="notas" data-g="notas" placeholder="Acuerdos con el cliente, cambios, recordatorios…">${esc(g.notas)}</textarea>
+        </div>
+      </div>`;
+
+    // Cambios en los campos: se guardan en memoria y se recalcula al salir del campo
+    f.querySelectorAll("[data-g]").forEach((el) => {
+      el.addEventListener("change", () => {
+        g[el.dataset.g] = el.value;
+        if (["estado", "venta", "costePrevisto", "fechaInicio", "fechaFinPrevista", "avanceManual"].includes(el.dataset.g)) repintarConservando();
+      });
+    });
+    f.querySelectorAll("[data-fase]").forEach((el) => {
+      el.addEventListener("change", () => {
+        const fa = g.fases[Number(el.dataset.fase)];
+        fa[el.dataset.k] = el.dataset.k === "avance" ? Math.min(100, Math.max(0, Number(el.value) || 0)) : el.value;
+        if (el.dataset.k === "avance") repintarConservando();
+      });
+    });
+    f.querySelectorAll("[data-cobro]").forEach((el) => {
+      el.addEventListener("change", () => {
+        const c = g.cobros[Number(el.dataset.cobro)];
+        const k = el.dataset.k;
+        if (k === "cobrado") { c.cobrado = el.checked; c.fechaCobro = el.checked ? fechaLocal() : ""; }
+        else c[k] = k === "importe" ? (el.value === "" ? "" : Number(el.value)) : el.value;
+        if (k !== "concepto") repintarConservando();
+      });
+    });
+    f.querySelectorAll("[data-quitar-fase]").forEach((b) => b.addEventListener("click", () => { g.fases.splice(Number(b.dataset.quitarFase), 1); repintarConservando(); }));
+    f.querySelectorAll("[data-quitar-cobro]").forEach((b) => b.addEventListener("click", () => { g.cobros.splice(Number(b.dataset.quitarCobro), 1); repintarConservando(); }));
+    $("anadirFase").addEventListener("click", () => { g.fases.push({ nombre: "", avance: 0 }); repintarConservando(); });
+    $("fasesTipicas")?.addEventListener("click", () => { g.fases = FASES_TIPICAS.map((n) => ({ nombre: n, avance: 0 })); repintarConservando(); });
+    $("anadirCobro").addEventListener("click", () => { g.cobros.push({ id: nuevoId(), concepto: "", importe: "", fechaPrevista: "", cobrado: false }); repintarConservando(); });
+    $("cobrosTipicos")?.addEventListener("click", () => {
+      const v = Number(g.venta) || 0, r2 = (x) => Math.round(x * 100) / 100;
+      g.cobros = [
+        { id: nuevoId(), concepto: "Señal (30 %) al firmar", importe: r2(v * 0.3), fechaPrevista: g.fechaInicio || "", cobrado: false },
+        { id: nuevoId(), concepto: "A mitad de obra (40 %)", importe: r2(v * 0.4), fechaPrevista: "", cobrado: false },
+        { id: nuevoId(), concepto: "Final a la entrega (30 %)", importe: r2(v - r2(v * 0.3) - r2(v * 0.4)), fechaPrevista: g.fechaFinPrevista || "", cobrado: false }
+      ];
+      repintarConservando();
+    });
+    $("cerrarFicha").addEventListener("click", cerrarFicha);
+    $("guardarFicha").addEventListener("click", guardarFicha);
+    $("abrirObra").addEventListener("click", () => {
+      sessionStorage.setItem("obraActual", JSON.stringify({ id: fichaObra.id, nombre: fichaObra.nombre }));
+      window.location.href = "obra.html";
+    });
+  }
+
+  let sinGuardar = false;
+  function repintarConservando() {
+    sinGuardar = true;
+    const scroll = $("ficha").scrollTop;
+    pintarFicha('<span style="color:var(--accent-dark);">Cambios sin guardar</span>');
+    $("ficha").scrollTop = scroll;
+  }
+  $("ficha").addEventListener("change", () => { if (!sinGuardar) { sinGuardar = true; const m = $("msgFicha"); if (m) m.innerHTML = '<span style="color:var(--accent-dark);">Cambios sin guardar</span>'; } });
+
+  function cerrarFicha() {
+    if (sinGuardar && !confirm("Hay cambios sin guardar. ¿Cerrar sin guardar?")) return;
+    sinGuardar = false;
+    $("ficha").close();
+  }
+  $("ficha").addEventListener("cancel", (e) => { e.preventDefault(); cerrarFicha(); });
+
+  async function guardarFicha() {
+    // Recoge lo que se esté escribiendo en ese momento
+    document.activeElement?.blur?.();
+    const limpio = {
+      ...g,
+      venta: g.venta === "" ? "" : Number(g.venta) || 0,
+      costePrevisto: g.costePrevisto === "" ? "" : Number(g.costePrevisto) || 0,
+      avanceManual: g.avanceManual === "" ? "" : Number(g.avanceManual) || 0,
+      fases: g.fases.filter((x) => (x.nombre || "").trim() || Number(x.avance)),
+      cobros: g.cobros.filter((x) => (x.concepto || "").trim() || Number(x.importe)),
+      actualizado: fechaLocal()
+    };
+    const btn = $("guardarFicha");
+    btn.disabled = true; btn.textContent = "Guardando…";
+    try {
+      await updateDoc(doc(db, "obras", fichaObra.id), { gestion: limpio });
+      fichaObra.gestion = limpio;
+      g = gestionPorDefecto(JSON.parse(JSON.stringify(limpio)));
+      sinGuardar = false;
+      recalcular();
+      pintarFicha("✓ Guardado");
+    } catch (err) {
+      console.error(err);
+      alert("No se ha podido guardar: " + (err.message || err));
+      btn.disabled = false; btn.textContent = "Guardar";
+    }
+  }
+
+  // ---------- Coste de la mano de obra ----------
+  function abrirCostes() {
+    const d = $("costes");
+    const activos = empleados.filter((e) => e.activo !== false).sort((a, b) => (a.nombre || "").localeCompare(b.nombre || ""));
+    d.innerHTML = `
+      <h3 style="margin:0 0 6px;font-size:17px;">👷 Coste de la mano de obra</h3>
+      <p class="sub" style="margin:0 0 12px;">Lo que le cuesta a la empresa cada hora de trabajo (sueldo + Seguridad Social). Se usa para calcular el coste de cada obra con las horas apuntadas. No se muestra a nadie más.</p>
+      <div class="fila-coste"><b>Coste por defecto (€/h)</b><input type="number" step="0.01" id="costeDef" value="${costeDefecto || ""}" placeholder="p. ej. 22"></div>
+      <p class="sub" style="margin:10px 0 4px;">Si alguien tiene un coste distinto, ponlo aquí (vacío = el de por defecto):</p>
+      <div style="max-height:45vh;overflow:auto;">
+        ${activos.map((e) => `<div class="fila-coste"><span>${esc(e.nombre || "Sin nombre")}</span><input type="number" step="0.01" data-emp="${e.id}" value="${tarifas[e.id] && tarifas[e.id].costeHora !== undefined ? esc(tarifas[e.id].costeHora) : ""}" placeholder="${costeDefecto || ""}"></div>`).join("") || '<p class="sub">No hay empleados en el directorio.</p>'}
+      </div>
+      <div class="mini-btns" style="justify-content:flex-end;margin-top:14px;">
+        <button class="secondary" id="cancelarCostes">Cancelar</button>
+        <button class="primary" id="guardarCostes">Guardar</button>
+      </div>`;
+    $("cancelarCostes").addEventListener("click", () => d.close());
+    $("guardarCostes").addEventListener("click", async () => {
+      const btn = $("guardarCostes");
+      btn.disabled = true; btn.textContent = "Guardando…";
+      try {
+        const def = $("costeDef").value;
+        await setDoc(doc(db, "tarifas", "_empresa"), { costeHoraDefecto: def === "" ? 0 : Number(def) }, { merge: true });
+        costeDefecto = def === "" ? 0 : Number(def);
+        const cambios = [];
+        d.querySelectorAll("[data-emp]").forEach((inp) => {
+          const id = inp.dataset.emp, v = inp.value === "" ? "" : Number(inp.value);
+          const antes = tarifas[id] && tarifas[id].costeHora !== undefined ? tarifas[id].costeHora : "";
+          if (String(antes) !== String(v)) {
+            tarifas[id] = { ...(tarifas[id] || {}), costeHora: v };
+            cambios.push(setDoc(doc(db, "tarifas", id), { costeHora: v }, { merge: true }));
+          }
+        });
+        await Promise.all(cambios);
+        d.close();
+        recalcular();
+      } catch (err) {
+        console.error(err);
+        alert("No se ha podido guardar: " + (err.message || err));
+        btn.disabled = false; btn.textContent = "Guardar";
+      }
+    });
+    d.showModal();
+  }
+
+  requireAuth((user, perfil) => {
+    if (!esAdmin(perfil)) {
+      alert("El panel de obras es solo para dirección.");
+      window.location.href = "dashboard.html";
+      return;
+    }
+    cargarTodo();
+  });
+</script>
+</body>
+</html>
