@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<title>Abel's | Pagos y recibís</title>
+<title>Abel's | Pagos de horas extra</title>
 <link rel="manifest" href="manifest.json">
 <link rel="stylesheet" href="css/styles.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
@@ -20,26 +20,20 @@
   table.pagos th { text-align: left; font-size: 12px; font-weight: 600; color: var(--text-secondary); padding: 8px 6px; border-bottom: 2px solid var(--border); white-space: nowrap; }
   table.pagos td { padding: 8px 6px; border-bottom: 1px solid var(--border); vertical-align: middle; }
   table.pagos td.num, table.pagos th.num { text-align: right; }
-  table.pagos input[type="number"] { width: 84px; height: 34px; margin: 0; text-align: right; padding: 0 8px; font-size: 14px; }
-  table.pagos tr.fila-emp { cursor: default; }
+  table.pagos input[type="number"] { width: 90px; height: 34px; margin: 0; text-align: right; padding: 0 8px; font-size: 14px; }
   table.pagos tr.total td { font-weight: 700; border-top: 2px solid var(--border); border-bottom: none; }
   .importe { font-weight: 700; white-space: nowrap; }
   .desglose td { background: var(--bg); font-size: 13px; color: var(--text-secondary); }
   .desglose table { width: 100%; border-collapse: collapse; }
   .desglose th, .desglose td.d { padding: 4px 6px; text-align: left; font-size: 12px; border: none; }
-  .aviso-dias { font-size: 12px; color: var(--danger); }
-  .adel-box { display: grid; gap: 8px; }
-  .adel-form { display: grid; grid-template-columns: 150px 110px 1fr auto auto; gap: 8px; align-items: center; }
-  .adel-form input { margin: 0; height: 36px; font-size: 14px; }
-  .adel-form button { width: auto; height: 36px; padding: 0 12px; font-size: 13px; }
-  @media (max-width: 760px) { .adel-form { grid-template-columns: 1fr 1fr; } }
+  .ant-box { display: grid; gap: 8px; }
+  .ant-form { display: grid; grid-template-columns: 150px 110px 1fr auto auto; gap: 8px; align-items: center; }
+  .ant-form input { margin: 0; height: 36px; font-size: 14px; }
+  .ant-form button { width: auto; height: 36px; padding: 0 12px; font-size: 13px; }
+  @media (max-width: 760px) { .ant-form { grid-template-columns: 1fr 1fr; } }
   .neg { color: var(--danger); }
   .acciones { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 14px; }
   .acciones button { width: auto; padding: 0 18px; }
-  details summary { cursor: pointer; font-size: 14px; font-weight: 600; }
-  .datos-empresa { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; margin-top: 12px; }
-  .datos-empresa > div { min-width: 0; }
-  .datos-empresa input { margin-bottom: 0; }
 </style>
 </head>
 <body>
@@ -48,7 +42,7 @@
     <button class="icon-btn" id="backBtn" title="Volver" aria-label="Volver">&#8592;</button>
     <div class="topbar-info">
       <p class="topbar-obra">Administración</p>
-      <p class="topbar-title">Pagos y recibís</p>
+      <p class="topbar-title">Pagos de horas extra</p>
     </div>
   </div>
 
@@ -66,11 +60,12 @@
           <option value="mesAnterior">Mes anterior</option>
         </select>
       </div>
+      <div><label for="lugar">Lugar de firma</label><input type="text" id="lugar" placeholder="Palma"></div>
       <div><button class="primary" id="calcularBtn" style="height:44px;">Calcular</button></div>
     </div>
     <p style="font-size:12px;color:var(--text-muted);margin:10px 0 0;">
-      Se calcula con las horas apuntadas en "Registro de asistencia": horas normales × precio/hora + horas extra × precio/hora extra.
-      Los precios se guardan para la próxima vez. Si el precio de extra se deja vacío, se usa el normal.
+      Se pagan las horas extra apuntadas en "Registro de asistencia", al precio de cada trabajador (se guarda para la próxima vez).
+      Cada anticipo se resta una sola vez: en el primer recibí que se saque después de apuntarlo.
     </p>
   </div>
 
@@ -82,17 +77,15 @@
             <th><input type="checkbox" id="todos" checked aria-label="Seleccionar todos" style="width:18px;height:18px;margin:0;"></th>
             <th>Trabajador</th>
             <th class="num">Días</th>
-            <th class="num">H. normales</th>
-            <th class="num">H. extra</th>
-            <th class="num">€/hora</th>
-            <th class="num">€/h extra</th>
+            <th class="num">Horas extra</th>
+            <th class="num">€/hora extra</th>
             <th class="num">Importe</th>
-            <th class="num">Adelantos</th>
+            <th class="num">Anticipos</th>
             <th class="num">A pagar</th>
             <th></th>
           </tr>
         </thead>
-        <tbody id="cuerpo"><tr><td colspan="11"><div class="loading">Elige las fechas y pulsa Calcular.</div></td></tr></tbody>
+        <tbody id="cuerpo"><tr><td colspan="9"><div class="loading">Elige las fechas y pulsa Calcular.</div></td></tr></tbody>
       </table>
     </div>
     <div class="acciones">
@@ -103,16 +96,15 @@
   </div>
 
   <div class="card">
-    <details id="empresaDet">
-      <summary>Datos que salen en el recibí</summary>
-      <div class="datos-empresa">
-        <div><label for="empNombre">Empresa que paga</label><input type="text" id="empNombre" placeholder="Abel's Construcciones & Reformas"></div>
-        <div><label for="empCif">CIF (opcional)</label><input type="text" id="empCif"></div>
-        <div><label for="empLugar">Lugar de firma</label><input type="text" id="empLugar" placeholder="Palma"></div>
-        <div><label for="empConcepto">Concepto</label><input type="text" id="empConcepto" placeholder="trabajos realizados"></div>
-      </div>
-      <button class="secondary" id="guardarEmpresa" style="width:auto;padding:0 18px;margin-top:12px;">Guardar datos</button>
-    </details>
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px;">
+      <h1 style="font-size:16px;margin:0;">Todos los anticipos</h1>
+      <select id="antFiltro" class="campo" style="margin:0;width:auto;height:36px;" aria-label="Filtrar por trabajador"><option value="">Todos los trabajadores</option></select>
+    </div>
+    <p style="font-size:12px;color:var(--text-muted);margin:0 0 8px;">
+      <b>Pendiente</b>: se restará en el próximo recibí. <b>Restado</b>: ya salió en un recibí y no se vuelve a restar.
+      Si sacaste un recibí por error, pulsa "volver a pendiente" y se restará en el siguiente.
+    </p>
+    <div class="tabla-wrap"><table class="pagos" id="antTabla"></table></div>
   </div>
 </div>
 
@@ -120,21 +112,21 @@
   import { requireAuth } from "./js/auth.js";
   import { db } from "./js/firebase-config.js";
   import {
-    collection, getDocs, getDoc, doc, setDoc, addDoc, deleteDoc, query, where, serverTimestamp
+    collection, getDocs, doc, setDoc, addDoc, deleteDoc, updateDoc, query, where, serverTimestamp
   } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
   import {
-    esAdmin, esc, fechaLocal, fechaBonita, cargarConfig, horasTrabajadas, nombreDocumento,
-    euros, importeEnLetras, diaLaborableAnterior
+    esAdmin, esc, fechaLocal, fechaBonita, nombreDocumento, euros, importeEnLetras, diaLaborableAnterior
   } from "./js/registro.js";
-  import { LOGO } from "./js/logo.js";
+  import { EMPRESA, cargarLugar, guardarLugar, nuevoPDF, cabeceraPDF, firmasPDF, parrafoPDF } from "./js/documentos.js";
 
   const $ = id => document.getElementById(id);
   $("backBtn").addEventListener("click", () => window.location.href = "dashboard.html");
 
-  let cfg, obras = [], empleados = [], tarifas = {}, filas = [];
-  let empresa = { nombre: "Abel's Construcciones & Reformas", cif: "", lugar: "", concepto: "trabajos realizados" };
+  let obras = [], empleados = [], tarifas = {}, filas = [];
   const r2 = n => Math.round(n * 100) / 100;
   const h = n => (Math.round(n * 100) / 100).toLocaleString("es-ES");
+  const claveCalculada = () => `${$("desde").value}_${$("hasta").value}`;
+  let clavePeriodo = "";   // periodo de la tabla calculada (no cambia aunque se toquen las fechas sin recalcular)
 
   // ---------- Periodos rápidos ----------
   $("rapido").addEventListener("change", () => {
@@ -157,370 +149,382 @@
     calcular();
   });
 
+  $("lugar").addEventListener("change", async () => {
+    try { await guardarLugar($("lugar").value.trim()); $("msg").textContent = "Lugar de firma guardado."; }
+    catch (err) { console.error(err); $("msg").textContent = "No se ha podido guardar el lugar. ¿Están publicadas las reglas de Firebase?"; }
+  });
+
   // ---------- Datos ----------
   async function cargarBase() {
-    const [c, oSnap, eSnap] = await Promise.all([
-      cargarConfig(), getDocs(collection(db, "obras")), getDocs(collection(db, "empleados"))
+    const [oSnap, eSnap, lugar] = await Promise.all([
+      getDocs(collection(db, "obras")), getDocs(collection(db, "empleados")), cargarLugar()
     ]);
-    let tSnap = [];
-    try {
-      tSnap = await getDocs(collection(db, "tarifas"));
-    } catch (err) {
-      console.error(err);
-      $("msg").textContent = "No se han podido leer los precios guardados. Revisa que estén publicadas las reglas nuevas de Firebase.";
-    }
-    cfg = c;
     obras = oSnap.docs.map(d => ({ id: d.id, ...d.data() }));
     empleados = eSnap.docs.map(d => ({ id: d.id, ...d.data() }));
-    tSnap.forEach(d => {
-      if (d.id === "_empresa") empresa = { ...empresa, ...d.data() };
-      else tarifas[d.id] = d.data();
-    });
-    $("empNombre").value = empresa.nombre || "";
-    $("empCif").value = empresa.cif || "";
-    $("empLugar").value = empresa.lugar || "";
-    $("empConcepto").value = empresa.concepto || "";
+    $("lugar").value = lugar;
+    try {
+      const tSnap = await getDocs(collection(db, "tarifas"));
+      tSnap.forEach(d => { if (d.id !== "_empresa") tarifas[d.id] = d.data(); });
+    } catch (err) {
+      console.error(err);
+      $("msg").textContent = "No se han podido leer los precios guardados. Revisa que estén publicadas las reglas de Firebase.";
+    }
   }
 
-  const precio = id => Number((tarifas[id] || {}).precioHora) || 0;
+  // Precio de la hora extra (si solo había precio normal guardado, se usa ese como punto de partida)
   const precioExtra = id => {
     const t = tarifas[id] || {};
-    return t.precioHoraExtra !== undefined && t.precioHoraExtra !== "" && t.precioHoraExtra !== null ? Number(t.precioHoraExtra) : precio(id);
+    const v = t.precioHoraExtra !== undefined && t.precioHoraExtra !== "" && t.precioHoraExtra !== null ? t.precioHoraExtra : t.precioHora;
+    return Number(v) || 0;
   };
 
   function calcularFila(f) {
-    f.normales = r2(f.dias.reduce((s, d) => s + d.normales, 0));
     f.extra = r2(f.dias.reduce((s, d) => s + d.extra, 0));
-    f.precio = precio(f.id);
-    f.precioExtra = precioExtra(f.id);
-    f.importeNormal = r2(f.normales * f.precio);
-    f.importeExtra = r2(f.extra * f.precioExtra);
-    f.importe = r2(f.importeNormal + f.importeExtra);
-    f.dias.forEach(d => { d.importe = r2(d.normales * f.precio + d.extra * f.precioExtra); });
-    f.totalAdelantos = r2((f.adelantos || []).reduce((s, a) => s + (Number(a.importe) || 0), 0));
-    f.aPagar = r2(f.importe - f.totalAdelantos);
+    f.precio = precioExtra(f.id);
+    f.dias.forEach(d => { d.importe = r2(d.extra * f.precio); });
+    f.importe = r2(f.extra * f.precio);
+    // Se descuentan los anticipos (por fecha) mientras quepan en lo que tiene que cobrar; el resto queda para el próximo pago.
+    // Los ya incluidos en un recibí de este periodo se descuentan siempre.
+    let acum = 0;
+    f.aplicados = []; f.aplazados = [];
+    f.anticipos.forEach(a => {
+      const imp = Number(a.importe) || 0;
+      if (a.descontadoEn || acum + imp <= f.importe + 0.001) { f.aplicados.push(a); acum += imp; }
+      else f.aplazados.push(a);
+    });
+    f.totalAnticipos = r2(acum);
+    f.aPagar = r2(f.importe - f.totalAnticipos);
   }
 
   async function calcular() {
     const desde = $("desde").value, hasta = $("hasta").value;
     if (!desde || !hasta || hasta < desde) { $("msg").textContent = "Revisa las fechas."; return; }
-    $("cuerpo").innerHTML = '<tr><td colspan="11"><div class="loading">Calculando...</div></td></tr>';
+    clavePeriodo = claveCalculada();
+    $("cuerpo").innerHTML = '<tr><td colspan="9"><div class="loading">Calculando...</div></td></tr>';
     const snaps = await Promise.all(obras.map(o => getDocs(query(
       collection(db, "obras", o.id, "fichajes"), where("fecha", ">=", desde), where("fecha", "<=", hasta)
     )).then(s => ({ o, s }))));
 
     const porEmp = {};
+    const filaDe = (id, nombre) => porEmp[id] ||= {
+      id, emp: empleados.find(e => e.id === id) || { id, nombre }, dias: [], anticipos: []
+    };
     snaps.forEach(({ o, s }) => s.forEach(d => {
       const x = d.data();
-      if (x.presenciaConfirmada === false) return;
-      const emp = empleados.find(e => e.id === x.empleadoId) || { id: x.empleadoId, nombre: x.empleadoNombre };
-      const f = porEmp[x.empleadoId] ||= { id: x.empleadoId, emp, dias: [], sinSalida: 0 };
-      const t = horasTrabajadas(x.horaEntrada, x.horaSalida, cfg);
-      if (!x.horaSalida) f.sinSalida++;
-      const extra = Math.min(t, Number(x.horasExtra) || 0);
-      f.dias.push({ fecha: x.fecha, obra: o.nombre, entrada: x.horaEntrada || "", salida: x.horaSalida || "", normales: r2(t - extra), extra: r2(extra) });
+      const extra = Number(x.horasExtra) || 0;
+      if (x.presenciaConfirmada === false || extra <= 0) return;
+      filaDe(x.empleadoId, x.empleadoNombre).dias.push({ fecha: x.fecha, obra: o.nombre, extra: r2(extra) });
     }));
 
-    // Adelantos entregados dentro del periodo: se descuentan del pago
-    let adelSnap = [];
+    // Anticipos: los pendientes (sin descontar todavía) y los ya descontados en este mismo periodo
     try {
-      adelSnap = await getDocs(query(collection(db, "adelantos"), where("fecha", ">=", desde), where("fecha", "<=", hasta)));
+      const aSnap = await getDocs(collection(db, "adelantos"));
+      aSnap.forEach(d => {
+        const a = { id: d.id, ...d.data() };
+        if (a.descontadoEn && a.descontadoEn !== clavePeriodo) return;
+        filaDe(a.empleadoId, a.empleadoNombre).anticipos.push(a);
+      });
     } catch (err) {
       console.error(err);
-      $("msg").textContent = "No se han podido leer los adelantos. Revisa que estén publicadas las reglas nuevas de Firebase.";
+      $("msg").textContent = "No se han podido leer los anticipos. Revisa que estén publicadas las reglas de Firebase.";
     }
-    adelSnap.forEach(d => {
-      const a = { id: d.id, ...d.data() };
-      const emp = empleados.find(e => e.id === a.empleadoId) || { id: a.empleadoId, nombre: a.empleadoNombre };
-      const f = porEmp[a.empleadoId] ||= { id: a.empleadoId, emp, dias: [], sinSalida: 0 };
-      (f.adelantos ||= []).push(a);
-    });
-    Object.values(porEmp).forEach(f => (f.adelantos ||= []).sort((a, b) => a.fecha.localeCompare(b.fecha)));
 
     filas = Object.values(porEmp).sort((a, b) => nombreDocumento(a.emp).localeCompare(nombreDocumento(b.emp)));
-    filas.forEach(f => { f.dias.sort((a, b) => a.fecha.localeCompare(b.fecha)); f.sel = true; calcularFila(f); });
+    pintarAnticipos();
+    filas.forEach(f => {
+      f.dias.sort((a, b) => a.fecha.localeCompare(b.fecha));
+      f.anticipos.sort((a, b) => a.fecha.localeCompare(b.fecha));
+      f.sel = true;
+      calcularFila(f);
+    });
     pintar();
   }
 
   function pintar() {
     const cuerpo = $("cuerpo");
     if (filas.length === 0) {
-      cuerpo.innerHTML = '<tr><td colspan="11"><div class="placeholder">No hay asistencia apuntada en esas fechas.</div></td></tr>';
+      cuerpo.innerHTML = '<tr><td colspan="9"><div class="placeholder">No hay horas extra ni anticipos pendientes en esas fechas.</div></td></tr>';
       $("pdfBtn").disabled = $("resumenBtn").disabled = true;
-      $("msg").textContent = "";
       return;
     }
+    const sel = filas.filter(f => f.sel);
     cuerpo.innerHTML = filas.map((f, i) => `
       <tr class="fila-emp" data-i="${i}">
-        <td><input type="checkbox" class="c-sel" ${f.sel ? "checked" : ""} style="width:18px;height:18px;margin:0;" aria-label="Incluir en el PDF"></td>
+        <td><input type="checkbox" class="c-sel" ${f.sel ? "checked" : ""} style="width:18px;height:18px;margin:0;" aria-label="Incluir"></td>
         <td>
           <button class="link-btn b-ver" style="font-size:14px;color:var(--text);text-decoration:none;font-weight:600;">${esc(f.emp.nombre || "")} &#9662;</button>
           ${f.emp.nombreReal && f.emp.nombreReal !== f.emp.nombre ? `<div style="font-size:12px;color:var(--text-muted);">${esc(f.emp.nombreReal)}</div>` : ""}
-          ${f.sinSalida ? `<div class="aviso-dias">${f.sinSalida} día(s) sin hora de salida: no cuentan horas</div>` : ""}
         </td>
         <td class="num">${f.dias.length}</td>
-        <td class="num">${h(f.normales)}</td>
         <td class="num">${h(f.extra)}</td>
-        <td class="num"><input type="number" class="c-precio" min="0" step="0.5" value="${(tarifas[f.id] || {}).precioHora ?? ""}" placeholder="0"></td>
-        <td class="num"><input type="number" class="c-precio-extra" min="0" step="0.5" value="${(tarifas[f.id] || {}).precioHoraExtra ?? ""}" placeholder="${f.precio || 0}"></td>
-        <td class="num importe">${f.precio ? euros(f.importe) : '<span style="color:var(--danger);font-weight:400;">falta precio</span>'}</td>
+        <td class="num"><input type="number" class="c-precio" min="0" step="0.5" value="${f.precio || ""}" placeholder="0" aria-label="Precio de la hora extra"></td>
+        <td class="num importe">${f.extra && !f.precio ? '<span class="neg" style="font-weight:400;">falta precio</span>' : euros(f.importe)}</td>
         <td class="num">
-          ${f.totalAdelantos ? `<span class="neg">−${euros(f.totalAdelantos)}</span><br>` : ""}
-          <button class="link-btn b-adel" style="font-size:12px;">${f.totalAdelantos ? "ver / añadir" : "+ adelanto"}</button>
+          ${f.totalAnticipos ? `<span class="neg">-${euros(f.totalAnticipos)}</span><br>` : ""}
+          ${f.aplazados.length ? `<span style="font-size:11px;color:var(--text-muted);">${euros(f.aplazados.reduce((s, a) => s + Number(a.importe || 0), 0))} para el próximo pago</span><br>` : ""}
+          <button class="link-btn b-ant" style="font-size:12px;">${f.anticipos.length ? "ver / añadir" : "+ anticipo"}</button>
         </td>
-        <td class="num importe ${f.aPagar < 0 ? "neg" : ""}">${f.precio ? euros(f.aPagar) : "—"}</td>
-        <td><button class="secondary b-recibi" data-i="${i}" style="width:auto;height:34px;padding:0 12px;font-size:13px;">Recibí</button></td>
+        <td class="num importe ${f.aPagar < 0 ? "neg" : ""}">${euros(f.aPagar)}</td>
+        <td><button class="secondary b-recibi" style="width:auto;height:34px;padding:0 12px;font-size:13px;">Recibí</button></td>
       </tr>
-      <tr class="desglose adel-row" data-i="${i}" ${f.abierto ? "" : "hidden"}>
+      <tr class="desglose dias-row" data-i="${i}" hidden>
         <td></td>
-        <td colspan="10">
-          <div class="adel-box">
-            <b style="color:var(--text);font-size:13px;">Adelantos de ${esc(f.emp.nombre || "")} en este periodo</b>
-            ${f.adelantos.length ? f.adelantos.map(a => `
+        <td colspan="8">
+          ${f.dias.length ? `<table>
+            <tr><th>Fecha</th><th>Obra</th><th>Horas extra</th><th>Importe</th></tr>
+            ${f.dias.map(d => `<tr><td class="d">${fechaBonita(d.fecha)}</td><td class="d">${esc(d.obra)}</td><td class="d">${h(d.extra)} h</td><td class="d">${euros(d.importe)}</td></tr>`).join("")}
+          </table>` : "Sin horas extra en este periodo."}
+        </td>
+      </tr>
+      <tr class="desglose ant-row" data-i="${i}" ${f.abierto ? "" : "hidden"}>
+        <td></td>
+        <td colspan="8">
+          <div class="ant-box">
+            <b style="color:var(--text);font-size:13px;">Anticipos de ${esc(f.emp.nombre || "")} en este pago</b>
+            ${f.anticipos.length ? f.anticipos.map(a => `
               <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;">
                 <span>${fechaBonita(a.fecha)}</span><b class="neg">${euros(a.importe)}</b><span>${esc(a.nota || "")}</span>
-                <button class="link-btn b-adel-recibi" data-id="${a.id}">recibí del adelanto</button>
-                <button class="link-btn b-adel-quitar" data-id="${a.id}" style="color:var(--danger);">quitar</button>
-              </div>`).join("") : '<span>Ninguno todavía.</span>'}
-            <div class="adel-form">
-              <input type="date" class="a-fecha" value="${fechaLocal()}" aria-label="Fecha del adelanto">
-              <input type="number" class="a-importe" min="0" step="1" placeholder="Importe €" aria-label="Importe del adelanto">
+                <span style="font-size:12px;">${a.descontadoEn ? "· restado en el recibí de este periodo" : f.aplazados.includes(a) ? "· es mayor que lo que cobra: se restará en el próximo pago" : "· se resta en este pago"}</span>
+                <button class="link-btn b-ant-recibi" data-id="${a.id}">recibí del anticipo</button>
+                <button class="link-btn b-ant-quitar" data-id="${a.id}" style="color:var(--danger);">quitar</button>
+              </div>`).join("") : "<span>Ninguno pendiente.</span>"}
+            <div class="ant-form">
+              <input type="date" class="a-fecha" value="${fechaLocal()}" aria-label="Fecha del anticipo">
+              <input type="number" class="a-importe" min="0" step="1" placeholder="Importe €" aria-label="Importe del anticipo">
               <input type="text" class="a-nota" placeholder="Nota (opcional)" aria-label="Nota">
               <button class="primary a-guardar">Guardar</button>
               <button class="secondary a-guardar-recibi">Guardar y recibí</button>
             </div>
-            <span style="font-size:12px;">Si la fecha del adelanto queda fuera de las fechas elegidas arriba, se descontará en el periodo que la incluya.</span>
           </div>
-        </td>
-      </tr>
-      <tr class="desglose" data-i="${i}" hidden>
-        <td></td>
-        <td colspan="10">
-          <table>
-            <tr><th>Fecha</th><th>Obra</th><th>Entrada</th><th>Salida</th><th>Normales</th><th>Extra</th><th>Importe</th></tr>
-            ${f.dias.map(d => `<tr><td class="d">${fechaBonita(d.fecha)}</td><td class="d">${esc(d.obra)}</td><td class="d">${esc(d.entrada)}</td><td class="d">${esc(d.salida) || "—"}</td><td class="d">${h(d.normales)} h</td><td class="d">${h(d.extra)} h</td><td class="d">${euros(d.importe)}</td></tr>`).join("")}
-          </table>
         </td>
       </tr>`).join("") + `
       <tr class="total">
         <td></td><td>Total seleccionados</td>
-        <td class="num">${filas.filter(f => f.sel).reduce((s, f) => s + f.dias.length, 0)}</td>
-        <td class="num">${h(filas.filter(f => f.sel).reduce((s, f) => s + f.normales, 0))}</td>
-        <td class="num">${h(filas.filter(f => f.sel).reduce((s, f) => s + f.extra, 0))}</td>
-        <td></td><td></td>
-        <td class="num importe">${euros(filas.filter(f => f.sel).reduce((s, f) => s + f.importe, 0))}</td>
-        <td class="num neg">−${euros(filas.filter(f => f.sel).reduce((s, f) => s + f.totalAdelantos, 0))}</td>
-        <td class="num importe">${euros(filas.filter(f => f.sel).reduce((s, f) => s + f.aPagar, 0))}</td>
+        <td class="num">${sel.reduce((s, f) => s + f.dias.length, 0)}</td>
+        <td class="num">${h(sel.reduce((s, f) => s + f.extra, 0))}</td>
+        <td></td>
+        <td class="num importe">${euros(sel.reduce((s, f) => s + f.importe, 0))}</td>
+        <td class="num neg">-${euros(sel.reduce((s, f) => s + f.totalAnticipos, 0))}</td>
+        <td class="num importe">${euros(sel.reduce((s, f) => s + f.aPagar, 0))}</td>
         <td></td>
       </tr>`;
 
     cuerpo.querySelectorAll("tr.fila-emp").forEach(tr => {
-      const f = filas[Number(tr.dataset.i)];
+      const i = tr.dataset.i, f = filas[Number(i)];
       tr.querySelector(".b-ver").addEventListener("click", () => {
-        const d = cuerpo.querySelector(`tr.desglose[data-i="${tr.dataset.i}"]`); d.hidden = !d.hidden;
+        const d = cuerpo.querySelector(`tr.dias-row[data-i="${i}"]`); d.hidden = !d.hidden;
       });
       tr.querySelector(".c-sel").addEventListener("change", e => { f.sel = e.target.checked; pintar(); });
-      tr.querySelector(".b-adel").addEventListener("click", () => { f.abierto = !f.abierto; pintar(); });
-      const fila = cuerpo.querySelector(`tr.adel-row[data-i="${tr.dataset.i}"]`);
-      const guardarAdelanto = async conRecibi => {
-        const fecha = fila.querySelector(".a-fecha").value;
-        const importe = Number(fila.querySelector(".a-importe").value);
-        if (!fecha || !(importe > 0)) { $("msg").textContent = "Pon la fecha y el importe del adelanto."; return; }
-        const a = { empleadoId: f.id, empleadoNombre: f.emp.nombre || "", fecha, importe, nota: fila.querySelector(".a-nota").value.trim() };
-        try {
-          const ref = await addDoc(collection(db, "adelantos"), { ...a, registradoEn: serverTimestamp() });
-          if (conRecibi) recibiAdelantoPDF(f, a).save(`recibi_adelanto_${nombreDocumento(f.emp)}_${fecha}.pdf`.replace(/\s+/g, "_"));
-          if (fecha >= $("desde").value && fecha <= $("hasta").value) {
-            f.adelantos.push({ id: ref.id, ...a });
-            f.adelantos.sort((x, y) => x.fecha.localeCompare(y.fecha));
-          }
-          $("msg").textContent = `Adelanto de ${euros(importe)} para ${f.emp.nombre} guardado.`;
-          calcularFila(f);
-          pintar();
-        } catch (err) {
-          console.error(err);
-          $("msg").textContent = "No se ha podido guardar el adelanto. ¿Están publicadas las reglas nuevas de Firebase?";
-        }
-      };
-      fila.querySelector(".a-guardar").addEventListener("click", () => guardarAdelanto(false));
-      fila.querySelector(".a-guardar-recibi").addEventListener("click", () => guardarAdelanto(true));
-      fila.querySelectorAll(".b-adel-recibi").forEach(b => b.addEventListener("click", () => {
-        const a = f.adelantos.find(x => x.id === b.dataset.id);
-        recibiAdelantoPDF(f, a).save(`recibi_adelanto_${nombreDocumento(f.emp)}_${a.fecha}.pdf`.replace(/\s+/g, "_"));
-      }));
-      fila.querySelectorAll(".b-adel-quitar").forEach(b => b.addEventListener("click", async () => {
-        const a = f.adelantos.find(x => x.id === b.dataset.id);
-        if (!confirm(`¿Quitar el adelanto de ${euros(a.importe)} del ${fechaBonita(a.fecha)}?`)) return;
-        await deleteDoc(doc(db, "adelantos", a.id));
-        f.adelantos = f.adelantos.filter(x => x.id !== a.id);
-        calcularFila(f);
-        pintar();
-      }));
-      const guardarPrecio = async () => {
-        const p = tr.querySelector(".c-precio").value;
-        const pe = tr.querySelector(".c-precio-extra").value;
-        tarifas[f.id] = { precioHora: p === "" ? "" : Number(p), precioHoraExtra: pe === "" ? "" : Number(pe), nombre: f.emp.nombre || "" };
+      tr.querySelector(".b-ant").addEventListener("click", () => { f.abierto = !f.abierto; pintar(); });
+      tr.querySelector(".b-recibi").addEventListener("click", () => descargarRecibis([f]));
+      tr.querySelector(".c-precio").addEventListener("change", async e => {
+        const v = e.target.value;
+        tarifas[f.id] = { ...(tarifas[f.id] || {}), precioHoraExtra: v === "" ? "" : Number(v), nombre: f.emp.nombre || "" };
         try {
           await setDoc(doc(db, "tarifas", f.id), tarifas[f.id]);
           $("msg").textContent = `Precio de ${f.emp.nombre} guardado.`;
         } catch (err) {
           console.error(err);
-          $("msg").textContent = "No se ha podido guardar el precio. ¿Están publicadas las reglas nuevas de Firebase?";
+          $("msg").textContent = "No se ha podido guardar el precio. ¿Están publicadas las reglas de Firebase?";
         }
         calcularFila(f);
         pintar();
+      });
+
+      const fila = cuerpo.querySelector(`tr.ant-row[data-i="${i}"]`);
+      const guardarAnticipo = async conRecibi => {
+        const fecha = fila.querySelector(".a-fecha").value;
+        const importe = Number(fila.querySelector(".a-importe").value);
+        if (!fecha || !(importe > 0)) { $("msg").textContent = "Pon la fecha y el importe del anticipo."; return; }
+        const a = { empleadoId: f.id, empleadoNombre: f.emp.nombre || "", fecha, importe, nota: fila.querySelector(".a-nota").value.trim() };
+        try {
+          const ref = await addDoc(collection(db, "adelantos"), { ...a, registradoEn: serverTimestamp() });
+          if (conRecibi) recibiAnticipoPDF(f, a).save(`recibi_anticipo_${nombreDocumento(f.emp)}_${fecha}.pdf`.replace(/\s+/g, "_"));
+          f.anticipos.push({ id: ref.id, ...a });
+          f.anticipos.sort((x, y) => x.fecha.localeCompare(y.fecha));
+          $("msg").textContent = `Anticipo de ${euros(importe)} para ${f.emp.nombre} guardado.`;
+          calcularFila(f);
+          pintar();
+          pintarAnticipos();
+        } catch (err) {
+          console.error(err);
+          $("msg").textContent = "No se ha podido guardar el anticipo. ¿Están publicadas las reglas de Firebase?";
+        }
       };
-      tr.querySelector(".c-precio").addEventListener("change", guardarPrecio);
-      tr.querySelector(".c-precio-extra").addEventListener("change", guardarPrecio);
+      fila.querySelector(".a-guardar").addEventListener("click", () => guardarAnticipo(false));
+      fila.querySelector(".a-guardar-recibi").addEventListener("click", () => guardarAnticipo(true));
+      fila.querySelectorAll(".b-ant-recibi").forEach(b => b.addEventListener("click", () => {
+        const a = f.anticipos.find(x => x.id === b.dataset.id);
+        recibiAnticipoPDF(f, a).save(`recibi_anticipo_${nombreDocumento(f.emp)}_${a.fecha}.pdf`.replace(/\s+/g, "_"));
+      }));
+      fila.querySelectorAll(".b-ant-quitar").forEach(b => b.addEventListener("click", async () => {
+        const a = f.anticipos.find(x => x.id === b.dataset.id);
+        if (!confirm(`¿Quitar el anticipo de ${euros(a.importe)} del ${fechaBonita(a.fecha)}? Se borra del todo.`)) return;
+        await deleteDoc(doc(db, "adelantos", a.id));
+        f.anticipos = f.anticipos.filter(x => x.id !== a.id);
+        calcularFila(f);
+        pintar();
+        pintarAnticipos();
+      }));
     });
     $("todos").checked = filas.every(f => f.sel);
-    $("pdfBtn").disabled = $("resumenBtn").disabled = !filas.some(f => f.sel);
+    $("pdfBtn").disabled = $("resumenBtn").disabled = sel.length === 0;
   }
+
+  // ---------- Lista de todos los anticipos ----------
+  let todosAnticipos = [];
+  async function pintarAnticipos() {
+    try {
+      const snap = await getDocs(collection(db, "adelantos"));
+      todosAnticipos = snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => b.fecha.localeCompare(a.fecha));
+    } catch (err) { console.error(err); return; }
+    const filtro = $("antFiltro"), sel = filtro.value;
+    const ids = [...new Set(todosAnticipos.map(a => a.empleadoId))];
+    const nom = id => (empleados.find(e => e.id === id) || {}).nombre || (todosAnticipos.find(a => a.empleadoId === id) || {}).empleadoNombre || "";
+    filtro.innerHTML = '<option value="">Todos los trabajadores</option>' +
+      ids.sort((a, b) => nom(a).localeCompare(nom(b))).map(id => `<option value="${id}" ${id === sel ? "selected" : ""}>${esc(nom(id))}</option>`).join("");
+    const lista = todosAnticipos.filter(a => !filtro.value || a.empleadoId === filtro.value);
+    const t = $("antTabla");
+    if (!lista.length) { t.innerHTML = '<tr><td><div class="placeholder" style="padding:16px 0;">No hay anticipos apuntados.</div></td></tr>'; return; }
+    const estado = a => {
+      if (!a.descontadoEn) return '<span class="chip aviso">Pendiente</span>';
+      const [d, h2] = a.descontadoEn.split("_");
+      return `<span class="chip ok">Restado</span> <span style="font-size:12px;color:var(--text-muted);">recibí del ${fechaBonita(d)} al ${fechaBonita(h2)}</span>`;
+    };
+    t.innerHTML = `<tr><th>Fecha</th><th>Trabajador</th><th class="num">Importe</th><th>Nota</th><th>Estado</th><th></th></tr>` +
+      lista.map(a => `<tr>
+        <td>${fechaBonita(a.fecha)}</td><td>${esc(nom(a.empleadoId))}</td><td class="num importe">${euros(a.importe)}</td>
+        <td>${esc(a.nota || "")}</td><td>${estado(a)}</td>
+        <td style="white-space:nowrap;">
+          ${a.descontadoEn ? `<button class="link-btn b-pend" data-id="${a.id}">volver a pendiente</button> ` : ""}
+          <button class="link-btn b-borrar-ant" data-id="${a.id}" style="color:var(--danger);">borrar</button>
+        </td></tr>`).join("");
+    t.querySelectorAll(".b-pend").forEach(b => b.addEventListener("click", async () => {
+      await updateDoc(doc(db, "adelantos", b.dataset.id), { descontadoEn: null, descontadoFecha: null });
+      $("msg").textContent = "Anticipo vuelto a pendiente: se restará en el próximo recibí.";
+      calcular();
+    }));
+    t.querySelectorAll(".b-borrar-ant").forEach(b => b.addEventListener("click", async () => {
+      const a = todosAnticipos.find(x => x.id === b.dataset.id);
+      if (!confirm(`¿Borrar el anticipo de ${euros(a.importe)} del ${fechaBonita(a.fecha)} de ${nom(a.empleadoId)}? No se puede deshacer.`)) return;
+      await deleteDoc(doc(db, "adelantos", a.id));
+      $("msg").textContent = "Anticipo borrado.";
+      calcular();
+    }));
+  }
+  $("antFiltro").addEventListener("change", pintarAnticipos);
 
   $("todos").addEventListener("change", e => { filas.forEach(f => f.sel = e.target.checked); pintar(); });
   $("calcularBtn").addEventListener("click", () => { $("rapido").value = ""; calcular(); });
 
-  // ---------- PDF ----------
-  const periodoTxt = () => `del ${fechaBonita($("desde").value)} al ${fechaBonita($("hasta").value)}`;
+  // ---------- Recibís ----------
+  const periodoTxt = () => { const [d, a] = clavePeriodo.split("_"); return `del ${fechaBonita(d)} al ${fechaBonita(a)}`; };
+  const nombreArchivo = base => `${base}_${clavePeriodo.replace("_", "_a_")}`.replace(/\s+/g, "_");
 
-  function nombreArchivo(base) {
-    return `${base}_${$("desde").value}_a_${$("hasta").value}.pdf`.replace(/\s+/g, "_");
-  }
-
-  // Cabecera común con el logo
-  function cabecera(pdf, titulo, W, M) {
-    const altoLogo = 24, anchoLogo = altoLogo * LOGO.ancho / LOGO.alto;
-    try { pdf.addImage(LOGO.data, "JPEG", M, 10, anchoLogo, altoLogo); } catch (e) { console.error(e); }
-    pdf.setFont("helvetica", "bold"); pdf.setFontSize(18);
-    pdf.text(titulo, W - M, 22, { align: "right" });
-    pdf.setFont("helvetica", "normal"); pdf.setFontSize(9);
-    pdf.text(`${empresa.nombre || ""}${empresa.cif ? " · CIF " + empresa.cif : ""}`, W - M, 28, { align: "right" });
-  }
-
-  // Un recibí = un PDF por trabajador
   function recibiPDF(f) {
-    const { jsPDF } = window.jspdf;
-    const pdf = new jsPDF({ unit: "mm", format: "a4" });
-    const W = 210, M = 18;
+    const pdf = nuevoPDF(), W = 210, M = 18;
     const nombre = nombreDocumento(f.emp);
-    cabecera(pdf, "RECIBÍ", W, M);
-
-    pdf.setFontSize(11);
     const pago = Math.max(0, f.aPagar);
+    cabeceraPDF(pdf, "RECIBÍ", W, M);
     const texto = `D./Dña. ${nombre}, con DNI/NIE ${f.emp.dni || "____________________"}, declara haber recibido de ` +
-      `${empresa.nombre || "la empresa"} la cantidad de ${euros(pago)} (${importeEnLetras(pago)}) ` +
-      `en concepto de ${empresa.concepto || "trabajos realizados"} durante el periodo ${periodoTxt()}` +
-      (f.totalAdelantos ? `, que junto con los adelantos ya recibidos por importe de ${euros(f.totalAdelantos)} completa el total de ${euros(f.importe)}` : "") +
+      `${EMPRESA.nombre} (CIF ${EMPRESA.cif}) la cantidad de ${euros(pago)} (${importeEnLetras(pago)}) ` +
+      `en concepto de horas extraordinarias realizadas durante el periodo ${periodoTxt()}` +
+      (f.totalAnticipos ? `, una vez descontados los anticipos ya recibidos por importe de ${euros(f.totalAnticipos)}` : "") +
       `, según el desglose siguiente:`;
-    pdf.text(pdf.splitTextToSize(texto, W - 2 * M), M, 46, { lineHeightFactor: 1.5 });
+    let y = parrafoPDF(pdf, texto, M, 46, W - 2 * M);
+
+    if (f.dias.length) {
+      pdf.autoTable({
+        startY: y + 4,
+        margin: { left: M, right: M },
+        head: [["Fecha", "Obra", "Horas extra", "Importe"]],
+        body: f.dias.map(d => [fechaBonita(d.fecha), d.obra, `${h(d.extra)} h`, euros(d.importe)]),
+        styles: { fontSize: 9, cellPadding: 1.8 },
+        headStyles: { fillColor: [216, 90, 48] },
+        columnStyles: { 2: { halign: "right" }, 3: { halign: "right" } }
+      });
+      y = pdf.lastAutoTable.finalY;
+    }
 
     pdf.autoTable({
-      startY: 70,
-      margin: { left: M, right: M },
-      head: [["Fecha", "Obra", "Entrada", "Salida", "H. normales", "H. extra", "Importe"]],
-      body: f.dias.map(d => [fechaBonita(d.fecha), d.obra, d.entrada, d.salida || "—", h(d.normales), h(d.extra), euros(d.importe)]),
-      styles: { fontSize: 9, cellPadding: 1.8 },
-      headStyles: { fillColor: [216, 90, 48] },
-      columnStyles: { 4: { halign: "right" }, 5: { halign: "right" }, 6: { halign: "right" } }
-    });
-
-    let y = pdf.lastAutoTable.finalY + 6;
-    pdf.autoTable({
-      startY: y,
+      startY: y + 6,
       margin: { left: W / 2 - 20, right: M },
       body: [
-        ["Horas normales", `${h(f.normales)} h`, euros(f.importeNormal)],
-        ["Horas extra", `${h(f.extra)} h`, euros(f.importeExtra)],
-        ...(f.totalAdelantos ? [
-          [{ content: "Total del periodo", styles: { fontStyle: "bold" } }, "", { content: euros(f.importe), styles: { fontStyle: "bold" } }],
-          ...f.adelantos.map(a => [`Adelanto entregado el ${fechaBonita(a.fecha)}`, "", "-" + euros(a.importe)])
-        ] : []),
-        [{ content: f.totalAdelantos ? "TOTAL RECIBIDO EN ESTE PAGO" : "TOTAL RECIBIDO", styles: { fontStyle: "bold" } }, "", { content: euros(pago), styles: { fontStyle: "bold" } }]
+        ["Horas extra", `${h(f.extra)} h`, euros(f.importe)],
+        ...f.aplicados.map(a => [`Anticipo entregado el ${fechaBonita(a.fecha)}`, "", "-" + euros(a.importe)]),
+        [{ content: f.totalAnticipos ? "TOTAL RECIBIDO EN ESTE PAGO" : "TOTAL RECIBIDO", styles: { fontStyle: "bold" } }, "",
+          { content: euros(pago), styles: { fontStyle: "bold" } }]
       ],
       styles: { fontSize: 10, cellPadding: 1.8 },
       theme: "plain",
-      columnStyles: { 0: { cellWidth: "auto" }, 1: { halign: "right", cellWidth: 16 }, 2: { halign: "right", cellWidth: 30 } }
+      columnStyles: { 1: { halign: "right", cellWidth: 16 }, 2: { halign: "right", cellWidth: 30 } }
     });
 
-    y = pdf.lastAutoTable.finalY + 14;
-    if (y > 245) { pdf.addPage(); y = 30; }
-    pdf.setFontSize(11);
-    pdf.text(`En ${empresa.lugar || "________________"}, a ${fechaBonita(fechaLocal())}`, M, y);
-    y += 28;
-    pdf.line(M, y, M + 70, y);
-    pdf.line(W - M - 70, y, W - M, y);
-    pdf.setFontSize(9);
-    pdf.text("Firma del trabajador", M, y + 5);
-    pdf.text(nombre, M, y + 10);
-    pdf.text("Por la empresa", W - M - 70, y + 5);
+    firmasPDF(pdf, pdf.lastAutoTable.finalY + 14, nombre, $("lugar").value.trim(), fechaBonita(fechaLocal()), W, M);
     return pdf;
   }
 
-  // Recibí del propio adelanto, para que lo firme en el momento de dárselo
-  function recibiAdelantoPDF(f, a) {
-    const { jsPDF } = window.jspdf;
-    const pdf = new jsPDF({ unit: "mm", format: "a4" });
-    const W = 210, M = 18;
+  function recibiAnticipoPDF(f, a) {
+    const pdf = nuevoPDF(), W = 210, M = 18;
     const nombre = nombreDocumento(f.emp);
-    cabecera(pdf, "RECIBÍ · ADELANTO", W, M);
-    pdf.setFontSize(11);
+    cabeceraPDF(pdf, "RECIBÍ · ANTICIPO", W, M);
     const texto = `D./Dña. ${nombre}, con DNI/NIE ${f.emp.dni || "____________________"}, declara haber recibido de ` +
-      `${empresa.nombre || "la empresa"} la cantidad de ${euros(a.importe)} (${importeEnLetras(a.importe)}) ` +
-      `en concepto de adelanto a cuenta de ${empresa.concepto || "trabajos realizados"}, con fecha ${fechaBonita(a.fecha)}. ` +
-      `Este importe se descontará del pago del periodo correspondiente.` + (a.nota ? ` Nota: ${a.nota}.` : "");
-    pdf.text(pdf.splitTextToSize(texto, W - 2 * M), M, 46, { lineHeightFactor: 1.5 });
-    let y = 92;
-    pdf.text(`En ${empresa.lugar || "________________"}, a ${fechaBonita(a.fecha)}`, M, y);
-    y += 28;
-    pdf.line(M, y, M + 70, y);
-    pdf.line(W - M - 70, y, W - M, y);
-    pdf.setFontSize(9);
-    pdf.text("Firma del trabajador", M, y + 5);
-    pdf.text(nombre, M, y + 10);
-    pdf.text("Por la empresa", W - M - 70, y + 5);
+      `${EMPRESA.nombre} (CIF ${EMPRESA.cif}) la cantidad de ${euros(a.importe)} (${importeEnLetras(a.importe)}) ` +
+      `en concepto de anticipo, con fecha ${fechaBonita(a.fecha)}. Este importe se descontará del próximo pago de horas extraordinarias.` +
+      (a.nota ? ` Nota: ${a.nota}.` : "");
+    const y = parrafoPDF(pdf, texto, M, 46, W - 2 * M);
+    firmasPDF(pdf, y + 14, nombre, $("lugar").value.trim(), fechaBonita(a.fecha), W, M);
     return pdf;
   }
 
-  const archivoRecibi = f => nombreArchivo("recibi_" + nombreDocumento(f.emp));
-
-  function avisarSinPrecio(lista) {
-    const sinPrecio = lista.filter(f => !f.precio);
-    return !sinPrecio.length || confirm(`${sinPrecio.map(f => f.emp.nombre).join(", ")} no tiene(n) precio/hora. ¿Sacar el recibí igualmente?`);
+  // Al sacar el recibí, los anticipos pendientes quedan marcados como descontados en este periodo
+  async function marcarAnticipos(f) {
+    const pendientes = f.aplicados.filter(a => !a.descontadoEn);
+    for (const a of pendientes) {
+      await updateDoc(doc(db, "adelantos", a.id), { descontadoEn: clavePeriodo, descontadoFecha: fechaLocal() });
+      a.descontadoEn = clavePeriodo;
+    }
   }
 
-  // Recibí de un trabajador desde su fila
-  document.getElementById("cuerpo").addEventListener("click", e => {
-    const b = e.target.closest(".b-recibi");
-    if (!b) return;
-    const f = filas[Number(b.dataset.i)];
-    if (!avisarSinPrecio([f])) return;
-    recibiPDF(f).save(archivoRecibi(f));
-    $("msg").textContent = `Recibí de ${f.emp.nombre} descargado.`;
-  });
-
-  // Todos los seleccionados: un archivo por trabajador
-  $("pdfBtn").addEventListener("click", async () => {
-    const sel = filas.filter(f => f.sel);
-    if (!avisarSinPrecio(sel)) return;
+  async function descargarRecibis(lista) {
+    const sinNada = lista.filter(f => f.importe <= 0);
+    lista = lista.filter(f => f.importe > 0);
+    if (sinNada.length) $("msg").textContent = `${sinNada.map(f => f.emp.nombre).join(", ")}: sin horas extra en este periodo, no hay recibí (sus anticipos quedan pendientes).`;
+    if (!lista.length) return;
+    const sinPrecio = lista.filter(f => f.extra && !f.precio);
+    if (sinPrecio.length && !confirm(`${sinPrecio.map(f => f.emp.nombre).join(", ")} no tiene(n) precio de hora extra. ¿Sacar el recibí igualmente?`)) return;
     $("pdfBtn").disabled = true;
-    for (let i = 0; i < sel.length; i++) {
-      $("msg").textContent = `Descargando recibí ${i + 1} de ${sel.length}...`;
-      recibiPDF(sel[i]).save(archivoRecibi(sel[i]));
-      await new Promise(r => setTimeout(r, 600));
+    try {
+      for (let i = 0; i < lista.length; i++) {
+        const f = lista[i];
+        $("msg").textContent = lista.length > 1 ? `Descargando recibí ${i + 1} de ${lista.length}...` : "";
+        recibiPDF(f).save(`${nombreArchivo("recibi_" + nombreDocumento(f.emp))}.pdf`);
+        await marcarAnticipos(f);
+        if (lista.length > 1) await new Promise(r => setTimeout(r, 600));
+      }
+      $("msg").textContent = lista.length > 1
+        ? `${lista.length} recibís descargados, uno por trabajador. Si el navegador pregunta si permites varias descargas, pulsa "Permitir".`
+        : `Recibí de ${lista[0].emp.nombre} descargado.` + (sinNada.length ? " " + $("msg").textContent : "");
+    } catch (err) {
+      console.error(err);
+      $("msg").textContent = "El recibí se ha descargado, pero no se han podido marcar los anticipos como descontados. Revisa la conexión.";
     }
-    $("pdfBtn").disabled = false;
-    $("msg").textContent = `${sel.length} recibí(s) descargado(s), uno por trabajador. Si el navegador pregunta si permites varias descargas, pulsa "Permitir".`;
-  });
+    pintar();
+    pintarAnticipos();
+  }
 
-  // Resumen para la gestora en Excel, con formato y fórmulas
+  $("pdfBtn").addEventListener("click", () => descargarRecibis(filas.filter(f => f.sel)));
+
+  // ---------- Resumen para la gestora (Excel) ----------
   $("resumenBtn").addEventListener("click", async () => {
     const sel = filas.filter(f => f.sel);
     if (!window.ExcelJS) { $("msg").textContent = "No se ha podido cargar el generador de Excel. Revisa la conexión y recarga."; return; }
     const wb = new ExcelJS.Workbook();
-    wb.creator = empresa.nombre || "Abel's";
+    wb.creator = EMPRESA.nombre;
     const NARANJA = "FFD85A30", GRIS = "FFF0ECE6";
     const EUR = '#,##0.00 "€"', HORAS = '#,##0.0#';
     const borde = { top: { style: "thin", color: { argb: "FFD9D4CC" } }, bottom: { style: "thin", color: { argb: "FFD9D4CC" } } };
+    const fechaExcel = f => { const [y, m, d] = f.split("-").map(Number); return new Date(Date.UTC(y, m - 1, d)); };
 
     function cabeceraHoja(ws, titulo, nCols) {
       ws.pageSetup = { paperSize: 9, orientation: "landscape", fitToPage: true, fitToWidth: 1, fitToHeight: 0,
@@ -529,7 +533,7 @@
       ws.getCell(1, 1).value = titulo;
       ws.getCell(1, 1).font = { bold: true, size: 14 };
       ws.mergeCells(2, 1, 2, nCols);
-      ws.getCell(2, 1).value = `${empresa.nombre || ""}${empresa.cif ? " · CIF " + empresa.cif : ""} · Periodo ${periodoTxt()}`;
+      ws.getCell(2, 1).value = `${EMPRESA.nombre} · CIF ${EMPRESA.cif} · Periodo ${periodoTxt()}`;
       ws.getCell(2, 1).font = { size: 10, color: { argb: "FF5F5E5A" } };
     }
     function filaTitulos(ws, fila, titulos) {
@@ -544,39 +548,32 @@
       r.height = 30;
     }
 
-    // ---- Hoja 1: resumen por trabajador ----
+    // Hoja 1: resumen por trabajador
     const ws = wb.addWorksheet("Resumen", { views: [{ state: "frozen", ySplit: 4 }] });
-    const tit = ["Trabajador", "DNI/NIE", "Días", "Horas normales", "€/hora", "Importe normales",
-      "Horas extra", "€/hora extra", "Importe extra", "Total periodo", "Adelantos", "A pagar"];
-    cabeceraHoja(ws, "Resumen de pagos", tit.length);
+    const tit = ["Trabajador", "DNI/NIE", "Días con extra", "Horas extra", "€/hora extra", "Importe horas extra", "Anticipos", "A pagar"];
+    cabeceraHoja(ws, "Resumen de pagos de horas extra", tit.length);
     filaTitulos(ws, 4, tit);
-    ws.columns = [{ width: 30 }, { width: 13 }, { width: 7 }, { width: 10 }, { width: 9 }, { width: 13 },
-      { width: 9 }, { width: 10 }, { width: 12 }, { width: 13 }, { width: 12 }, { width: 13 }];
+    ws.columns = [{ width: 30 }, { width: 13 }, { width: 10 }, { width: 10 }, { width: 11 }, { width: 14 }, { width: 12 }, { width: 13 }];
     const primera = 5;
     sel.forEach((f, i) => {
       const n = primera + i;
       const r = ws.getRow(n);
-      r.values = [nombreDocumento(f.emp), f.emp.dni || "", f.dias.length, f.normales, f.precio,
-        { formula: `D${n}*E${n}`, result: f.importeNormal }, f.extra, f.precioExtra,
-        { formula: `G${n}*H${n}`, result: f.importeExtra }, { formula: `F${n}+I${n}`, result: f.importe },
-        f.totalAdelantos, { formula: `J${n}-K${n}`, result: f.aPagar }];
-      [4, 7].forEach(c => r.getCell(c).numFmt = HORAS);
-      [5, 6, 8, 9, 10, 11, 12].forEach(c => r.getCell(c).numFmt = EUR);
+      r.values = [nombreDocumento(f.emp), f.emp.dni || "", f.dias.length, f.extra, f.precio,
+        { formula: `D${n}*E${n}`, result: f.importe }, f.totalAnticipos, { formula: `F${n}-G${n}`, result: f.aPagar }];
+      r.getCell(4).numFmt = HORAS;
+      [5, 6, 7, 8].forEach(c => r.getCell(c).numFmt = EUR);
       r.eachCell(c => c.border = borde);
       if (i % 2) r.eachCell(c => c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFFAF8F5" } });
     });
     const ultima = primera + sel.length - 1;
     const t = ws.getRow(ultima + 1);
     t.getCell(1).value = "TOTAL";
-    const sumar = col => ({ formula: `SUM(${col}${primera}:${col}${ultima})`, result: 0 });
-    const totales = { C: sel.reduce((s, f) => s + f.dias.length, 0), D: sel.reduce((s, f) => s + f.normales, 0),
-      F: sel.reduce((s, f) => s + f.importeNormal, 0), G: sel.reduce((s, f) => s + f.extra, 0),
-      I: sel.reduce((s, f) => s + f.importeExtra, 0), J: sel.reduce((s, f) => s + f.importe, 0),
-      K: sel.reduce((s, f) => s + f.totalAdelantos, 0), L: sel.reduce((s, f) => s + f.aPagar, 0) };
+    const totales = { C: sel.reduce((s, f) => s + f.dias.length, 0), D: sel.reduce((s, f) => s + f.extra, 0),
+      F: sel.reduce((s, f) => s + f.importe, 0), G: sel.reduce((s, f) => s + f.totalAnticipos, 0), H: sel.reduce((s, f) => s + f.aPagar, 0) };
     Object.entries(totales).forEach(([col, v]) => {
       const c = t.getCell(col);
-      c.value = { ...sumar(col), result: r2(v) };
-      c.numFmt = ["D", "G"].includes(col) ? HORAS : col === "C" ? "0" : EUR;
+      c.value = { formula: `SUM(${col}${primera}:${col}${ultima})`, result: r2(v) };
+      c.numFmt = col === "D" ? HORAS : col === "C" ? "0" : EUR;
     });
     t.eachCell({ includeEmpty: true }, c => {
       c.font = { bold: true };
@@ -585,35 +582,33 @@
     });
     ws.autoFilter = { from: { row: 4, column: 1 }, to: { row: ultima, column: tit.length } };
 
-    // ---- Hoja 2: detalle por días ----
+    // Hoja 2: detalle de horas extra por día
     const wd = wb.addWorksheet("Detalle por días", { views: [{ state: "frozen", ySplit: 4 }] });
-    const titD = ["Trabajador", "Fecha", "Obra", "Entrada", "Salida", "Horas normales", "Horas extra", "Importe"];
-    cabeceraHoja(wd, "Detalle por días", titD.length);
+    const titD = ["Trabajador", "Fecha", "Obra", "Horas extra", "Importe"];
+    cabeceraHoja(wd, "Detalle de horas extra por día", titD.length);
     filaTitulos(wd, 4, titD);
-    wd.columns = [{ width: 30 }, { width: 12 }, { width: 24 }, { width: 9 }, { width: 9 }, { width: 10 }, { width: 9 }, { width: 12 }];
+    wd.columns = [{ width: 30 }, { width: 12 }, { width: 28 }, { width: 11 }, { width: 13 }];
     let n = 5;
     sel.forEach(f => f.dias.forEach(d => {
-      const [y, m, dd] = d.fecha.split("-").map(Number);
       const r = wd.getRow(n++);
-      r.values = [nombreDocumento(f.emp), new Date(Date.UTC(y, m - 1, dd)), d.obra, d.entrada, d.salida, d.normales, d.extra, d.importe];
+      r.values = [nombreDocumento(f.emp), fechaExcel(d.fecha), d.obra, d.extra, d.importe];
       r.getCell(2).numFmt = "dd/mm/yyyy";
-      [6, 7].forEach(c => r.getCell(c).numFmt = HORAS);
-      r.getCell(8).numFmt = EUR;
+      r.getCell(4).numFmt = HORAS;
+      r.getCell(5).numFmt = EUR;
       r.eachCell(c => c.border = borde);
     }));
     if (n > 5) wd.autoFilter = { from: { row: 4, column: 1 }, to: { row: n - 1, column: titD.length } };
 
-    // ---- Hoja 3: adelantos ----
-    const adel = sel.flatMap(f => (f.adelantos || []).map(a => ({ f, a })));
-    if (adel.length) {
-      const wa = wb.addWorksheet("Adelantos", { views: [{ state: "frozen", ySplit: 4 }] });
-      cabeceraHoja(wa, "Adelantos entregados", 4);
+    // Hoja 3: anticipos descontados
+    const ants = sel.flatMap(f => f.aplicados.map(a => ({ f, a })));
+    if (ants.length) {
+      const wa = wb.addWorksheet("Anticipos", { views: [{ state: "frozen", ySplit: 4 }] });
+      cabeceraHoja(wa, "Anticipos descontados", 4);
       filaTitulos(wa, 4, ["Trabajador", "Fecha", "Importe", "Nota"]);
       wa.columns = [{ width: 30 }, { width: 12 }, { width: 12 }, { width: 36 }];
-      adel.forEach(({ f, a }, i) => {
-        const [y, m, dd] = a.fecha.split("-").map(Number);
+      ants.forEach(({ f, a }, i) => {
         const r = wa.getRow(5 + i);
-        r.values = [nombreDocumento(f.emp), new Date(Date.UTC(y, m - 1, dd)), Number(a.importe) || 0, a.nota || ""];
+        r.values = [nombreDocumento(f.emp), fechaExcel(a.fecha), Number(a.importe) || 0, a.nota || ""];
         r.getCell(2).numFmt = "dd/mm/yyyy";
         r.getCell(3).numFmt = EUR;
         r.eachCell(c => c.border = borde);
@@ -622,23 +617,12 @@
 
     const buf = await wb.xlsx.writeBuffer();
     const url = URL.createObjectURL(new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }));
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = nombreArchivo("resumen_pagos").replace(/\.pdf$/, ".xlsx");
-    document.body.appendChild(a); a.click(); a.remove();
+    const enlace = document.createElement("a");
+    enlace.href = url;
+    enlace.download = `${nombreArchivo("resumen_horas_extra")}.xlsx`;
+    document.body.appendChild(enlace); enlace.click(); enlace.remove();
     setTimeout(() => URL.revokeObjectURL(url), 2000);
     $("msg").textContent = "Resumen en Excel descargado.";
-  });
-
-  $("guardarEmpresa").addEventListener("click", async () => {
-    empresa = { nombre: $("empNombre").value.trim(), cif: $("empCif").value.trim(), lugar: $("empLugar").value.trim(), concepto: $("empConcepto").value.trim() };
-    try {
-      await setDoc(doc(db, "tarifas", "_empresa"), empresa);
-      $("msg").textContent = "Datos del recibí guardados.";
-    } catch (err) {
-      console.error(err);
-      $("msg").textContent = "No se han podido guardar. ¿Están publicadas las reglas nuevas de Firebase?";
-    }
   });
 
   requireAuth(async (user, perfil) => {
@@ -650,12 +634,7 @@
     const hoy = new Date();
     $("desde").value = fechaLocal(new Date(hoy.getFullYear(), hoy.getMonth(), 1));
     $("hasta").value = diaLaborableAnterior() < $("desde").value ? fechaLocal() : diaLaborableAnterior();
-    try {
-      await cargarBase();
-    } catch (err) {
-      console.error(err);
-      $("msg").textContent = "No se han podido cargar los precios. Revisa que estén publicadas las reglas nuevas de Firebase.";
-    }
+    await cargarBase();
     calcular();
   });
 </script>
