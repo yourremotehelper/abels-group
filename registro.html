@@ -128,6 +128,7 @@
   let saliendo = false;
   let obras = [];
   let vehiculos = [];
+  let tarjetas = [];
   let cfg = null;
   let ausencias = {};
   let filas = [];   // { empId, nombre, existente: {obraId, docId, ...} | null, obraId, entrada, salida }
@@ -157,9 +158,9 @@
 
   function cambiada(f) {
     const e = f.existente;
-    if (!e) return !!(f.entrada || f.salida || f.vehiculoId);
+    if (!e) return !!(f.entrada || f.salida || f.vehiculoId || f.tarjetaId);
     return f.obraId !== e.obraId || f.entrada !== (e.horaEntrada || "") || f.salida !== (e.horaSalida || "")
-      || f.vehiculoId !== (e.vehiculoId || "") || Number(f.extra || 0) !== Number(e.horasExtra || 0);
+      || f.vehiculoId !== (e.vehiculoId || "") || f.tarjetaId !== (e.tarjetaId || "") || Number(f.extra || 0) !== Number(e.horasExtra || 0);
   }
 
   function hayCambios() { return filas.some(cambiada); }
@@ -180,12 +181,15 @@
       aviso.style.display = "block";
     } else aviso.style.display = "none";
 
-    const [obrasSnap, empSnap, vehSnap, aus] = await Promise.all([
+    const [obrasSnap, empSnap, vehSnap, aus, tarSnap] = await Promise.all([
       getDocs(collection(db, "obras")),
       getDocs(collection(db, "empleados")),
       getDocs(collection(db, "vehiculos")),
-      cargarAusenciasDelDia(fecha)
+      cargarAusenciasDelDia(fecha),
+      getDocs(collection(db, "tarjetas")).catch(() => ({ docs: [] }))
     ]);
+    tarjetas = tarSnap.docs.map(d => ({ id: d.id, ...d.data() }))
+      .sort((a, b) => (a.nombre || "").localeCompare(b.nombre || ""));
     ausencias = aus;
     const fo = document.getElementById("filtroObra"), foSel = fo.value;
     fo.innerHTML = '<option value="">Todas las obras</option>' + obrasSnap.docs
@@ -220,6 +224,7 @@
         entrada: ex ? (ex.horaEntrada || "") : "",
         salida: ex ? (ex.horaSalida || "") : "",
         vehiculoId: ex ? (ex.vehiculoId || "") : "",
+        tarjetaId: ex ? (ex.tarjetaId || "") : "",
         extra: ex ? Number(ex.horasExtra || 0) : 0,
         extraTocada: !!(ex && ex.horasExtra)
       };
@@ -229,7 +234,7 @@
       if (!filas.find(f => f.empId === ex.empleadoId)) {
         filas.push({ empId: ex.empleadoId, nombre: ex.empleadoNombre || "Sin nombre", existente: ex,
           obraId: ex.obraId, entrada: ex.horaEntrada || "", salida: ex.horaSalida || "",
-          emp: { nombre: ex.empleadoNombre }, carnet: !!ex.vehiculoId, vehiculoId: ex.vehiculoId || "",
+          emp: { nombre: ex.empleadoNombre }, carnet: !!ex.vehiculoId, vehiculoId: ex.vehiculoId || "", tarjetaId: ex.tarjetaId || "",
           extra: Number(ex.horasExtra || 0), extraTocada: !!ex.horasExtra });
       }
     });
@@ -257,6 +262,25 @@
       ${vehiculos.map(v => {
         const o = otros(v.id);
         return `<option value="${v.id}" ${v.id === f.vehiculoId ? "selected" : ""}>Condujo: ${esc(v.nombre)}${o.length ? " · también " + esc(o.join(", ")) : ""}</option>`;
+      }).join("")}
+    </select>`;
+  }
+
+  function nombreTarjeta(id) {
+    const t = tarjetas.find(t => t.id === id);
+    return t ? t.nombre + (t.ultimos ? " ···· " + t.ultimos : "") : "";
+  }
+
+  // Tarjeta de empresa que usó ese día (cualquiera puede usarla, no hace falta carnet)
+  function selectTarjeta(f) {
+    if (tarjetas.length === 0) return "";
+    const otros = id => filas.filter(x => x !== f && x.tarjetaId === id && (x.entrada || x.existente)).map(x => x.nombre);
+    const suya = f.emp && f.emp.tarjetaId;
+    return `<select class="campo c-tarjeta" style="grid-column:1 / -1;" aria-label="Tarjeta de empresa que usó">
+      <option value="" ${!f.tarjetaId ? "selected" : ""}>No usó tarjeta</option>
+      ${tarjetas.map(t => {
+        const o = otros(t.id);
+        return `<option value="${t.id}" ${t.id === f.tarjetaId ? "selected" : ""}>Tarjeta: ${esc(nombreTarjeta(t.id))}${t.id === suya ? " (la suya)" : ""}${o.length ? " · también " + esc(o.join(", ")) : ""}</option>`;
       }).join("")}
     </select>`;
   }
@@ -361,6 +385,7 @@
           <input type="number" class="c-extra" value="${f.extra || ""}" min="0" max="12" step="0.5" inputmode="decimal" placeholder="Horas extra" aria-label="Horas extra">
           <span class="c-res" style="font-size:12px;color:var(--text-muted);align-self:center;">${resumenFila(f)}</span>
           ${selectCoche(f)}
+          ${selectTarjeta(f)}
         </div>
         <div class="fila-acciones">
           <button class="link-btn b-jornada">jornada normal</button>
@@ -396,6 +421,8 @@
       });
       const cCoche = div.querySelector(".c-coche");
       if (cCoche) cCoche.addEventListener("change", e => { f.vehiculoId = e.target.value; pintar(); });
+      const cTarjeta = div.querySelector(".c-tarjeta");
+      if (cTarjeta) cTarjeta.addEventListener("change", e => { f.tarjetaId = e.target.value; pintar(); });
       div.querySelector(".b-jornada").addEventListener("click", () => {
         f.entrada = jornadaEntrada.value;
         f.salida = jornadaSalida.value;
@@ -410,6 +437,7 @@
         f.entrada = e ? (e.horaEntrada || "") : "";
         f.salida = e ? (e.horaSalida || "") : "";
         f.vehiculoId = e ? (e.vehiculoId || "") : "";
+        f.tarjetaId = e ? (e.tarjetaId || "") : "";
         f.extra = e ? Number(e.horasExtra || 0) : 0;
         f.extraTocada = !!(e && e.horasExtra);
         pintar();
@@ -485,6 +513,8 @@
           horaSalida: f.salida || "",
           vehiculoId: f.vehiculoId || "",
           vehiculoNombre: nombreVehiculo(f.vehiculoId),
+          tarjetaId: f.tarjetaId || "",
+          tarjetaNombre: nombreTarjeta(f.tarjetaId),
           horasExtra: f.salida ? (Number(f.extra) || 0) : 0
         };
 
@@ -518,6 +548,8 @@
             horaSalida: f.salida || "",
             vehiculoId: nuevo.vehiculoId,
             vehiculoNombre: nuevo.vehiculoNombre,
+            tarjetaId: nuevo.tarjetaId,
+            tarjetaNombre: nuevo.tarjetaNombre,
             horasExtra: nuevo.horasExtra,
             modificado: true,
             ultimaModificacion: { ...quien, momento: new Date().toISOString() }
@@ -569,7 +601,7 @@
         historialDiv.innerHTML = '<div class="placeholder" style="padding:16px 0;">Sin cambios manuales este día.</div>';
         return;
       }
-      const horas = f => f ? `${f.horaEntrada || "--:--"}-${f.horaSalida || "--:--"}${f.horasExtra ? " +" + f.horasExtra + " h extra" : ""} (${nombreObra(f.obraId)})${f.vehiculoNombre ? " · " + f.vehiculoNombre : ""}` : "—";
+      const horas = f => f ? `${f.horaEntrada || "--:--"}-${f.horaSalida || "--:--"}${f.horasExtra ? " +" + f.horasExtra + " h extra" : ""} (${nombreObra(f.obraId)})${f.vehiculoNombre ? " · " + f.vehiculoNombre : ""}${f.tarjetaNombre ? " · tarjeta " + f.tarjetaNombre : ""}` : "—";
       historialDiv.innerHTML = items.map(h => `
         <div class="hist-item">
           <b>${esc(h.momentoLocal || "")}</b> · ${esc(h.usuarioNombre || "?")}: ${esc(h.accion)} de <b>${esc(h.empleadoNombre)}</b><br>
