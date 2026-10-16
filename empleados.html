@@ -17,15 +17,18 @@
 </style>
 </head>
 <body>
-<div class="screen">
+<div class="screen ancha">
   <div class="topbar">
     <button class="icon-btn" id="backBtn" title="Volver" aria-label="Volver">&#8592;</button>
     <div class="topbar-info">
-      <p class="topbar-obra">Directorio</p>
-      <p class="topbar-title">Empleados</p>
+      <p class="topbar-obra">👥 RRHH</p>
+      <p class="topbar-title">📇 Directorio</p>
     </div>
   </div>
+  <nav class="secciones" id="secciones"></nav>
 
+  <div class="dos-col">
+  <div>
   <div class="card">
     <h1 style="font-size:16px;margin-bottom:14px;">Añadir empleado</h1>
     <div class="error-msg" id="errorMsg"></div>
@@ -67,6 +70,8 @@
     </form>
   </div>
 
+  </div>
+  <div>
   <div class="card">
     <h1 style="font-size:16px;margin-bottom:10px;">Todos los empleados</h1>
     <input type="text" id="buscador" placeholder="Buscar por nombre...">
@@ -97,15 +102,19 @@
       <button class="secondary" id="vehAddBtn" style="width:auto;padding:0 14px;height:44px;">Añadir</button>
     </div>
   </div>
+  </div>
+  </div>
 </div>
 
 <script type="module">
   import { requireAuth } from "./js/auth.js";
+  import { pintarSecciones } from "./js/menu.js";
   import { db } from "./js/firebase-config.js";
   import {
     collection, getDocs, addDoc, doc, updateDoc, deleteDoc
   } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
   import { avatar, comprimirFoto, textoCarnet, esc, puedeGestionarFichajes } from "./js/registro.js";
+  pintarSecciones("rrhh", "directorio");
 
   const errorMsg = document.getElementById("errorMsg");
   const createBtn = document.getElementById("createBtn");
@@ -423,6 +432,7 @@
   filtroCategoria.addEventListener("change", pintarLista);
 
   requireAuth(async (user, perfil) => {
+    pintarSecciones("rrhh", "directorio", perfil);
     puedeEditarVehiculos = puedeGestionarFichajes(perfil);
     if (!puedeEditarVehiculos) {
       document.getElementById("vehAddBtn").parentElement.style.display = "none";
