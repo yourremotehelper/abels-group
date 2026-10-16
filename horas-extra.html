@@ -36,7 +36,7 @@
   <p id="resumen" style="font-size:13px;color:var(--text-secondary);margin:0 0 10px;"></p>
 
   <div class="card" id="lista"><div class="loading">Calculando...</div></div>
-  <p style="font-size:12px;color:var(--text-muted);text-align:center;">Toca un trabajador para ver los días. El tope y el aviso se cambian en "Jornada y horas extra".</p>
+  <p style="font-size:12px;color:var(--text-muted);text-align:center;">Toca un trabajador para ver los días. El máximo general se cambia en Ajustes → Jornada; el de cada trabajador, en su ficha del Directorio.</p>
 </div>
 
 <script type="module">
@@ -68,18 +68,27 @@
       (porEmp[f.empleadoId] ||= { nombre: f.empleadoNombre, dias: [] }).dias.push({ fecha: f.fecha, h, obra: obra.nombre });
     }));
 
-    const tope = Number(cfg.topeAnualExtras) || 0;
-    const aviso = Number(cfg.avisoExtras) || 0;
+    const topeGen = Number(cfg.topeAnualExtras) || 0;
+    const avisoGen = Number(cfg.avisoExtras) || 0;
+    // Cada trabajador puede tener su propio máximo (ficha del directorio); si no, el general.
+    // El aviso se adapta en la misma proporción que el general (p. ej. 70 de 80 = 87,5 %).
+    const limites = emp => {
+      const propio = emp.topeExtras !== undefined && emp.topeExtras !== null && emp.topeExtras !== "";
+      const tope = propio ? Number(emp.topeExtras) || 0 : topeGen;
+      const aviso = propio ? (topeGen && avisoGen ? Math.round(tope * avisoGen / topeGen) : 0) : avisoGen;
+      return { tope, aviso, propio };
+    };
     const filas = Object.entries(porEmp).map(([id, v]) => {
       const total = v.dias.reduce((s, x) => s + x.h, 0);
       const emp = empleados.find(e => e.id === id) || { nombre: v.nombre };
-      return { id, emp, nombre: emp.nombre || v.nombre, total, dias: v.dias.sort((a, b) => a.fecha.localeCompare(b.fecha)) };
+      return { id, emp, nombre: emp.nombre || v.nombre, total, ...limites(emp), dias: v.dias.sort((a, b) => a.fecha.localeCompare(b.fecha)) };
     }).sort((a, b) => b.total - a.total);
 
-    const sobre = filas.filter(f => tope && f.total > tope).length;
-    const cerca = filas.filter(f => aviso && f.total >= aviso && !(tope && f.total > tope)).length;
+    const sobre = filas.filter(f => f.tope && f.total > f.tope).length;
+    const cerca = filas.filter(f => f.aviso && f.total >= f.aviso && !(f.tope && f.total > f.tope)).length;
+    const propios = filas.filter(f => f.propio).length;
     $("resumen").textContent = filas.length
-      ? `${filas.length} trabajador(es) con horas extra en ${anio}. Tope: ${tope} h${sobre ? ` · ${sobre} por encima` : ""}${cerca ? ` · ${cerca} cerca del tope` : ""}.`
+      ? `${filas.length} trabajador(es) con horas extra en ${anio}. Máximo general: ${topeGen} h${propios ? ` (${propios} con máximo propio)` : ""}${sobre ? ` · ${sobre} por encima` : ""}${cerca ? ` · ${cerca} cerca del máximo` : ""}.`
       : "";
 
     if (filas.length === 0) {
@@ -88,8 +97,9 @@
     }
 
     $("lista").innerHTML = filas.map(f => {
+      const { tope, aviso } = f;
       const estado = tope && f.total > tope ? "mal" : aviso && f.total >= aviso ? "aviso" : "ok";
-      const texto = estado === "mal" ? `${textoHoras(f.total - tope)} por encima` : estado === "aviso" ? "cerca del tope" : "dentro del límite";
+      const texto = estado === "mal" ? `${textoHoras(f.total - tope)} por encima` : estado === "aviso" ? "cerca del máximo" : "dentro del límite";
       const color = estado === "mal" ? "var(--danger)" : estado === "aviso" ? "var(--accent)" : "var(--success)";
       const pct = tope ? Math.min(100, f.total / tope * 100) : 0;
       // Marca qué días ya caen por encima del tope (acumulado)
@@ -97,7 +107,7 @@
       const dias = f.dias.map(d => {
         acum += d.h;
         const encima = tope && acum > tope;
-        return `<span>${fechaBonita(d.fecha)} · ${textoHoras(d.h)} · ${esc(d.obra)}${encima ? ' <b style="color:var(--danger);">· por encima del tope</b>' : ""}</span>`;
+        return `<span>${fechaBonita(d.fecha)} · ${textoHoras(d.h)} · ${esc(d.obra)}${encima ?  ' <b style="color:var(--danger);">· por encima del máximo</b>' : ""}</span>`;
       }).join("");
       return `
         <div class="he-item">
@@ -106,7 +116,7 @@
             <div style="flex:1;min-width:0;">
               <div style="display:flex;justify-content:space-between;gap:8px;align-items:baseline;">
                 <span class="obra-name" style="font-size:14px;">${esc(f.nombre)}</span>
-                <span class="num">${textoHoras(f.total)}</span>
+                <span class="num">${textoHoras(f.total)}<span style="font-weight:400;color:var(--text-muted);"> de ${tope} h${f.propio ? " (propio)" : ""}</span></span>
               </div>
               <div class="barra"><span style="width:${pct}%;background:${color};"></span></div>
               <span class="chip ${estado}" style="margin-top:6px;">${texto}</span>
