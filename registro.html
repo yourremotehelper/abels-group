@@ -62,6 +62,8 @@
   <div class="error-msg" id="errorMsg"></div>
   <div class="error-msg" id="okMsg" style="color:var(--success-dark);background:var(--success-bg);"></div>
 
+  <div class="error-msg" id="festivoAviso" style="color:var(--accent-dark);"></div>
+
   <div class="card faltan-box" id="faltanBox">
     <div>
       <p style="font-size:13px;color:var(--text-secondary);margin:0;">Sin apuntar y sin motivo</p>
@@ -94,6 +96,8 @@
     <p style="font-size:12px;color:var(--text-muted);margin:0 0 8px;">Cada alta manual, corrección o borrado queda anotado aquí y no se puede eliminar.</p>
     <div id="historial"><div class="loading">Cargando...</div></div>
   </div>
+
+  <button class="secondary" id="borrarDiaBtn" style="color:var(--danger);border-color:var(--danger);margin-bottom:20px;">Borrar todo lo apuntado este día</button>
 </div>
 
 <script type="module">
@@ -105,7 +109,7 @@
   import {
     ayer, fechaBonita, puedeGestionarFichajes, registrarHistorial, esc, avatar,
     diaLaborableAnterior, fechaLocal, horaLocal,
-    cargarConfig, extraSugerida, horasTrabajadas, textoHoras, cargarAusenciasDelDia, TIPOS_AUSENCIA
+    cargarConfig, extraSugerida, horasTrabajadas, textoHoras, cargarAusenciasDelDia, TIPOS_AUSENCIA, esFestivo
   } from "./js/registro.js";
 
   const fechaInput = document.getElementById("fecha");
@@ -170,6 +174,11 @@
     ocultarMensajes();
     lista.innerHTML = '<div class="loading">Cargando...</div>';
     const fecha = fechaInput.value;
+    const aviso = document.getElementById("festivoAviso");
+    if (esFestivo(fecha, cfg)) {
+      aviso.textContent = `${fechaBonita(fecha)} es festivo (${cfg.festivos[fecha]}): las horas que se apunten cuentan enteras como extra.`;
+      aviso.style.display = "block";
+    } else aviso.style.display = "none";
 
     const [obrasSnap, empSnap, vehSnap, aus] = await Promise.all([
       getDocs(collection(db, "obras")),
@@ -261,7 +270,7 @@
   // Falta: no tiene asistencia apuntada (ni la está apuntando ahora) ni motivo de ausencia
   function esFalta(f) {
     const dia = new Date(fechaInput.value + "T12:00:00").getDay();
-    if (dia === 0 || dia === 6) return false;   // fin de semana: solo se apunta quien venga a hacer extra
+    if (dia === 0 || dia === 6 || esFestivo(fechaInput.value, cfg)) return false;   // fin de semana: solo se apunta quien venga a hacer extra
     return !f.existente && !ausencias[f.empId] && !f.entrada;
   }
 
@@ -270,21 +279,40 @@
 
   async function apuntarAusencia(f, tipo) {
     const fecha = fechaInput.value;
-    await addDoc(collection(db, "ausencias"), {
+    const ref = await addDoc(collection(db, "ausencias"), {
       empleadoId: f.empId, empleadoNombre: f.nombre, tipo, desde: fecha, hasta: fecha, nota: "",
       creadoPorUid: auth.currentUser ? auth.currentUser.uid : "",
       creadoPorNombre: perfil.nombre || "",
       creadoEn: `${fechaLocal()} ${horaLocal()}`,
       registradoEn: serverTimestamp()
     });
-    ausencias[f.empId] = { tipo, desde: fecha, hasta: fecha };
+    ausencias[f.empId] = { id: ref.id, tipo, desde: fecha, hasta: fecha };
     pintar();
+  }
+
+  // Quitar una ausencia apuntada por error (si duraba varios días, se quita entera: avisa antes)
+  async function quitarAusencia(f) {
+    const a = ausencias[f.empId];
+    if (!a || !a.id) return;
+    const varios = a.hasta && a.hasta !== a.desde;
+    if (!confirm(varios
+      ? `${f.nombre} tiene "${TIPOS_AUSENCIA[a.tipo] || a.tipo}" del ${fechaBonita(a.desde)} al ${fechaBonita(a.hasta)}. ¿Quitarla entera?`
+      : `¿Quitar "${TIPOS_AUSENCIA[a.tipo] || a.tipo}" de ${f.nombre}?`)) return;
+    try {
+      await deleteDoc(doc(db, "ausencias", a.id));
+      delete ausencias[f.empId];
+      pintar();
+    } catch (err) {
+      console.error(err);
+      alert("No se ha podido quitar. Inténtalo otra vez.");
+    }
   }
 
   function etiquetaEstado(f) {
     const e = f.existente;
     const a = ausencias[f.empId];
-    if (!e && a) return `<span class="chip">${esc(TIPOS_AUSENCIA[a.tipo] || "Ausente")}</span>`;
+    if (!e && a) return `<span class="chip">${esc(TIPOS_AUSENCIA[a.tipo] || "Ausente")}</span>
+      <button class="link-btn b-quitar-aus" style="color:var(--danger);margin-left:6px;">quitar</button>`;
     if (!e) return "";
     if (e.presenciaConfirmada === false) return '<span class="chip aviso">marcado: no estuvo en obra</span>';
     const horas = `${e.horaEntrada || "--:--"} - ${e.horaSalida || "--:--"}${e.horasExtra ? " +" + e.horasExtra + " h extra" : ""}`;
@@ -386,6 +414,8 @@
         f.extraTocada = !!(e && e.horasExtra);
         pintar();
       });
+      const bQuitarAus = div.querySelector(".b-quitar-aus");
+      if (bQuitarAus) bQuitarAus.addEventListener("click", () => quitarAusencia(f));
       const selMotivo = div.querySelector(".sel-motivo");
       if (selMotivo) selMotivo.addEventListener("change", async () => {
         if (!selMotivo.value) return;
@@ -503,6 +533,30 @@
       mostrar(errorMsg, "Algo no se ha podido guardar. Revisa la lista y vuelve a intentarlo.");
       actualizarBoton();
     }
+  });
+
+  // Borra todo lo de un día (para pruebas o errores): horas de todos, ausencias de solo ese día y su historial
+  document.getElementById("borrarDiaBtn").addEventListener("click", async () => {
+    const fecha = fechaInput.value;
+    const horas = filas.filter(f => f.existente);
+    const ausDia = Object.entries(ausencias).filter(([, a]) => a.id && a.desde === fecha && (a.hasta || a.desde) === fecha);
+    const ausLargas = Object.values(ausencias).filter(a => a.desde !== fecha || (a.hasta || a.desde) !== fecha);
+    let hist = [];
+    try {
+      hist = (await getDocs(query(collection(db, "historialFichajes"), where("fecha", "==", fecha)))).docs;
+    } catch (err) { console.error(err); }
+    if (!horas.length && !ausDia.length && !hist.length) { mostrar(okMsg, `No hay nada apuntado el ${fechaBonita(fecha)}.`); return; }
+    if (!confirm(`¿Borrar todo lo apuntado el ${fechaBonita(fecha)}?\n\n` +
+      `• Horas de ${horas.length} trabajador(es)\n• ${ausDia.length} ausencia(s) de ese día\n• ${hist.length} cambio(s) del historial` +
+      (ausLargas.length ? `\n\nLas bajas o vacaciones de varios días no se tocan (se quitan desde Ausencias o Vacaciones).` : "") +
+      `\n\nNo se puede deshacer.`)) return;
+    let fallos = 0;
+    for (const f of horas) { try { await deleteDoc(doc(db, "obras", f.existente.obraId, "fichajes", f.existente.docId)); } catch (e) { console.error(e); fallos++; } }
+    for (const [, a] of ausDia) { try { await deleteDoc(doc(db, "ausencias", a.id)); } catch (e) { console.error(e); fallos++; } }
+    for (const h of hist) { try { await deleteDoc(h.ref); } catch (e) { console.error(e); fallos++; } }
+    await cargar();
+    if (fallos) mostrar(errorMsg, `${fallos} cosa(s) no se han podido borrar. ¿Están publicadas las reglas nuevas de Firebase?`);
+    else mostrar(okMsg, `Borrado todo lo del ${fechaBonita(fecha)}.`);
   });
 
   async function cargarHistorial() {
