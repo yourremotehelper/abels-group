@@ -84,11 +84,10 @@
     if (puedeGestionarFichajes(perfil)) {
       boton("Registro de asistencia (día vencido)", "registro.html", true);
       boton("Ausencias y sin apuntar", "ausencias.html");
-      boton("Vacaciones", "vacaciones.html");
       boton("Calendario de festivos", "festivos.html");
       boton("Horas extra del año", "horas-extra.html");
       boton("Exportar control de asistencia", "exportar.html");
-      if (esAdmin(perfil)) boton("Pagos de horas extra", "pagos.html");
+      if (esAdmin(perfil)) boton("RRHH", "pagos.html");
     }
     boton("Directorio de empleados", "empleados.html");
     if (puedeGestionarFichajes(perfil)) {
