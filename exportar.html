@@ -256,7 +256,7 @@
   pdfBtn.addEventListener("click", () => ejecutar(pdfBtn, "Descargar PDF", filas => {
     const { jsPDF } = window.jspdf;
     const pdf = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
-    const titulo = "Control interno de asistencia · Abel's Construcciones & Reformas";
+    const titulo = "Control interno de asistencia · Reformas Abel Group S.L. (CIF B07887375)";
     const filtros = [
       obraSelect.value ? "Obra: " + nombreObra(obraSelect.value) : "Todas las obras",
       empleadoSelect.value ? "Trabajador: " + empleadoSelect.selectedOptions[0].textContent : "Todos los trabajadores",
