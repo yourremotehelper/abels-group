@@ -12,10 +12,11 @@
   <div class="topbar">
     <button class="icon-btn" id="backBtn" title="Volver" aria-label="Volver">&#8592;</button>
     <div class="topbar-info">
-      <p class="topbar-obra">Administración</p>
-      <p class="topbar-title">Usuarios</p>
+      <p class="topbar-obra">⚙️ Ajustes</p>
+      <p class="topbar-title">🔑 Usuarios</p>
     </div>
   </div>
+  <nav class="secciones" id="secciones"></nav>
 
   <div class="card">
     <h1 style="font-size:16px;margin-bottom:14px;">Crear nuevo usuario</h1>
@@ -59,6 +60,7 @@
 
 <script type="module">
   import { requireAuth } from "./js/auth.js";
+  import { pintarSecciones } from "./js/menu.js";
   import { nombreRol } from "./js/registro.js";
   import { db, firebaseConfig } from "./js/firebase-config.js";
   import { initializeApp, deleteApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
@@ -68,6 +70,7 @@
   import {
     collection, getDocs, doc, setDoc, updateDoc, deleteDoc
   } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+  pintarSecciones("ajustes", "usuarios");
 
   const nombreInput = document.getElementById("nombre");
   const emailPreview = document.getElementById("emailPreview");
@@ -249,6 +252,7 @@
   });
 
   requireAuth((user, perfil) => {
+    pintarSecciones("ajustes", "usuarios", perfil);
     if (perfil.rol !== "admin") {
       alert("Solo un administrador puede gestionar usuarios.");
       window.location.href = "dashboard.html";
