@@ -58,7 +58,7 @@
         </div>
         <p id="cuentaDias" style="font-size:13px;color:var(--text-secondary);margin:-6px 0 12px;"></p>
         <div id="vueltaBox">
-          <label for="vuelta">Día de reincorporación (salta fines de semana y festivos)</label>
+          <label for="vuelta">Día de reincorporación (el siguiente al último día; se puede cambiar)</label>
           <input type="date" id="vuelta">
         </div>
         <label for="nota">Nota (opcional)</label>
@@ -90,7 +90,7 @@
             <input type="number" id="diasAnio" min="0" max="60" style="width:70px;">
           </div>
         </div>
-        <p style="font-size:12px;color:var(--text-muted);margin:0 0 6px;">Días naturales; entre paréntesis, los laborables (sin fines de semana ni festivos).</p>
+        <p style="font-size:12px;color:var(--text-muted);margin:0 0 6px;">Días naturales, como marca el convenio de la construcción (cuentan fines de semana y festivos).</p>
         <div id="resumenVac"><div class="loading">Cargando...</div></div>
       </div>
 
@@ -123,6 +123,7 @@
   } from "./js/registro.js";
   import { EMPRESA, cargarLugar, nuevoPDF, cabeceraPDF, firmasPDF, parrafoPDF } from "./js/documentos.js";
   import { pintarSecciones } from "./js/menu.js";
+  import { vistaPrevia } from "./js/vista-previa.js";
 
   const $ = id => document.getElementById(id);
   pintarSecciones("rrhh", "ausencias");
@@ -134,19 +135,19 @@
 
   // ---------- Días ----------
   const aFecha = s => new Date(s + "T12:00:00");
-  const laborable = d => d.getDay() !== 0 && d.getDay() !== 6 && !festivos[fechaLocal(d)];
+  // Convenio de la construcción: las vacaciones son días naturales (cuentan fines de semana y festivos)
   function contarDias(desde, hasta, limDesde = "0000-00-00", limHasta = "9999-12-31") {
     const ini = desde > limDesde ? desde : limDesde, fin = hasta < limHasta ? hasta : limHasta;
-    let naturales = 0, laborables = 0;
-    for (let d = aFecha(ini); d <= aFecha(fin); d.setDate(d.getDate() + 1)) { naturales++; if (laborable(d)) laborables++; }
-    return { naturales, laborables };
+    let naturales = 0;
+    for (let d = aFecha(ini); d <= aFecha(fin); d.setDate(d.getDate() + 1)) naturales++;
+    return { naturales };
   }
   function diaReincorporacion(hasta) {
     const d = aFecha(hasta);
-    do { d.setDate(d.getDate() + 1); } while (!laborable(d));
+    d.setDate(d.getDate() + 1);
     return fechaLocal(d);
   }
-  const txtDias = c => `${c.naturales} día${c.naturales === 1 ? "" : "s"} natural${c.naturales === 1 ? "" : "es"} (${c.laborables} laborable${c.laborables === 1 ? "" : "s"})`;
+  const txtDias = c => `${c.naturales} día${c.naturales === 1 ? "" : "s"} natural${c.naturales === 1 ? "" : "es"}`;
   const opcionesTipo = (sel = "") => Object.entries(TIPOS_AUSENCIA).map(([k, v]) => `<option value="${k}" ${k === sel ? "selected" : ""}>${esc(v)}</option>`).join("");
   const chipTipo = t => `<span class="chip ${t === "vacaciones" ? "vac" : AUSENCIA_JUSTIFICADA(t) ? "" : "mal"}">${esc(TIPOS_AUSENCIA[t] || t)}</span>`;
 
@@ -182,9 +183,28 @@
     };
     if (tipo === "vacaciones") datos.reincorporacion = $("vuelta").value && $("vuelta").value > hasta ? $("vuelta").value : diaReincorporacion(hasta);
     try {
-      const ref = await addDoc(collection(db, "ausencias"), { ...datos, registradoEn: serverTimestamp() });
-      todas.push({ id: ref.id, ...datos });
-      if (conDocumento) documentoPDF(todas[todas.length - 1]);
+      if (conDocumento) {
+        // Primero la vista previa: solo se guarda si se descarga el documento
+        const prov = { id: "__nuevo", ...datos };
+        todas.push(prov);
+        const { pdf, archivo } = documentoPDF(prov);
+        todas = todas.filter(x => x !== prov);
+        let ref = null;
+        const ok = await vistaPrevia({
+          titulo: `Vacaciones de ${e.nombre}`, documentos: [{ nombre: e.nombre, pdf }],
+          botonDescargar: "Guardar y descargar",
+          nota: "Si algo no está bien, cierra y corrige las fechas: no se guarda nada hasta pulsar «Guardar y descargar».",
+          onDescargar: async () => {
+            ref = await addDoc(collection(db, "ausencias"), { ...datos, registradoEn: serverTimestamp() });
+            pdf.save(archivo);
+          }
+        });
+        if (!ok) return;
+        todas.push({ id: ref.id, ...datos });
+      } else {
+        const ref = await addDoc(collection(db, "ausencias"), { ...datos, registradoEn: serverTimestamp() });
+        todas.push({ id: ref.id, ...datos });
+      }
       $("nota").value = "";
       if (tipo === "vacaciones") $("anio").value = desde.slice(0, 4);
       pintarTodo();
@@ -256,7 +276,11 @@
         </div>
       </div>`;
     }).join("");
-    $("lista").querySelectorAll(".b-doc").forEach(b => b.addEventListener("click", () => documentoPDF(todas.find(x => x.id === b.dataset.id))));
+    $("lista").querySelectorAll(".b-doc").forEach(b => b.addEventListener("click", () => {
+      const v = todas.find(x => x.id === b.dataset.id);
+      const { pdf, archivo } = documentoPDF(v);
+      vistaPrevia({ titulo: `Vacaciones de ${nombreEmp(v.empleadoId) || v.empleadoNombre}`, documentos: [{ nombre: v.empleadoNombre, pdf }], onDescargar: () => pdf.save(archivo) });
+    }));
     $("lista").querySelectorAll(".b-quitar").forEach(b => b.addEventListener("click", () => quitar(todas.find(x => x.id === b.dataset.id))));
   }
 
@@ -319,16 +343,16 @@
     const total = delAnio.reduce((s, x) => s + contarDias(x.desde, x.hasta || x.desde, ini, fin).naturales, 0);
     pdf.autoTable({
       startY: y + 6, margin: { left: M, right: M },
-      head: [[`Vacaciones de ${anio}`, "Desde", "Hasta", "Días naturales", "Días laborables"]],
-      body: delAnio.map(x => { const c = contarDias(x.desde, x.hasta || x.desde, ini, fin); return [x.id === v.id ? "Este periodo" : "", fechaBonita(x.desde), fechaBonita(x.hasta || x.desde), c.naturales, c.laborables]; }),
-      foot: [[`Total ${anio}: ${total} de ${diasAnio} días naturales`, "", "", total, ""]],
+      head: [[`Vacaciones de ${anio}`, "Desde", "Hasta", "Días naturales"]],
+      body: delAnio.map(x => { const c = contarDias(x.desde, x.hasta || x.desde, ini, fin); return [x.id === v.id ? "Este periodo" : "", fechaBonita(x.desde), fechaBonita(x.hasta || x.desde), c.naturales]; }),
+      foot: [[`Total ${anio}: ${total} de ${diasAnio} días naturales`, "", "", total]],
       styles: { fontSize: 9, cellPadding: 1.8 }, headStyles: { fillColor: [216, 90, 48] },
-      footStyles: { fillColor: [240, 236, 230], textColor: 20 }, columnStyles: { 3: { halign: "right" }, 4: { halign: "right" } }
+      footStyles: { fillColor: [240, 236, 230], textColor: 20 }, columnStyles: { 3: { halign: "right" } }
     });
     firmasPDF(pdf, pdf.lastAutoTable.finalY + 16, nombre, lugar, fechaBonita(fechaLocal()), W, M);
     pdf.setFontSize(8); pdf.setTextColor(120);
     pdf.text("Ejemplar para la empresa", W / 2, 287, { align: "center" });
-    pdf.save(`vacaciones_${nombre}_${v.desde}_a_${hasta}.pdf`.replace(/\s+/g, "_"));
+    return { pdf, archivo: `vacaciones_${nombre}_${v.desde}_a_${hasta}.pdf`.replace(/\s+/g, "_") };
   }
 
   $("anio").addEventListener("change", pintarResumenVac);
