@@ -7,7 +7,6 @@
 <link rel="manifest" href="manifest.json">
 <link rel="stylesheet" href="css/styles.css">
 <style>
-  .screen.ancha { max-width: 1040px; }
   .meses { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 12px; }
   .mes { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 10px; }
   .mes h2 { font-size: 13px; margin: 0 0 6px; text-transform: capitalize; }
@@ -30,10 +29,11 @@
   <div class="topbar">
     <button class="icon-btn" id="backBtn" title="Volver" aria-label="Volver">&#8592;</button>
     <div class="topbar-info">
-      <p class="topbar-obra">Oficina</p>
-      <p class="topbar-title">Calendario de festivos</p>
+      <p class="topbar-obra">⚙️ Ajustes</p>
+      <p class="topbar-title">📅 Calendario de festivos</p>
     </div>
   </div>
+  <nav class="secciones" id="secciones"></nav>
 
   <div class="card">
     <div class="barra">
@@ -57,9 +57,11 @@
 
 <script type="module">
   import { requireAuth } from "./js/auth.js";
+  import { pintarSecciones } from "./js/menu.js";
   import { db } from "./js/firebase-config.js";
   import { doc, setDoc } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
   import { puedeGestionarFichajes, cargarFestivos, fechaLocal, fechaBonita, esc } from "./js/registro.js";
+  pintarSecciones("ajustes", "festivos");
 
   const $ = id => document.getElementById(id);
   $("backBtn").addEventListener("click", () => window.location.href = "dashboard.html");
@@ -175,6 +177,7 @@
   $("anio").addEventListener("change", pintar);
 
   requireAuth(async (user, p) => {
+    pintarSecciones("ajustes", "festivos", p);
     if (!puedeGestionarFichajes(p)) {
       alert("Esta pantalla es solo para oficina y administración.");
       window.location.href = "dashboard.html";
