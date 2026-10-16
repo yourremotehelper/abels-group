@@ -180,3 +180,53 @@ export async function cargarAusenciasDelDia(fecha) {
 export function textoHoras(n) {
   return (Math.round((Number(n) || 0) * 10) / 10).toLocaleString("es-ES") + " h";
 }
+
+// ---------- Nombre real, día vencido e importes ----------
+// Nombre para documentos (recibís, exportaciones): el real si está puesto; si no, el habitual
+export function nombreDocumento(emp) {
+  return ((emp && (emp.nombreReal || emp.nombre)) || "").trim();
+}
+
+// Último día laborable antes de hoy (el lunes devuelve el viernes)
+export function diaLaborableAnterior(d = new Date()) {
+  const x = new Date(d);
+  do { x.setDate(x.getDate() - 1); } while (x.getDay() === 0 || x.getDay() === 6);
+  return fechaLocal(x);
+}
+
+export function euros(n) {
+  return (Number(n) || 0).toLocaleString("es-ES", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " €";
+}
+
+// Importe en letras para el recibí: 1234.5 -> "mil doscientos treinta y cuatro euros con cincuenta céntimos"
+export function importeEnLetras(n) {
+  const U = ["cero", "un", "dos", "tres", "cuatro", "cinco", "seis", "siete", "ocho", "nueve", "diez", "once", "doce", "trece",
+    "catorce", "quince", "dieciséis", "diecisiete", "dieciocho", "diecinueve", "veinte", "veintiún", "veintidós", "veintitrés",
+    "veinticuatro", "veinticinco", "veintiséis", "veintisiete", "veintiocho", "veintinueve"];
+  const D = ["", "", "", "treinta", "cuarenta", "cincuenta", "sesenta", "setenta", "ochenta", "noventa"];
+  const C = ["", "ciento", "doscientos", "trescientos", "cuatrocientos", "quinientos", "seiscientos", "setecientos", "ochocientos", "novecientos"];
+  const menosDeMil = x => {
+    if (x === 100) return "cien";
+    const c = Math.floor(x / 100), r = x % 100;
+    let t = c ? C[c] : "";
+    if (r) {
+      const s = r < 30 ? U[r] : D[Math.floor(r / 10)] + (r % 10 ? " y " + U[r % 10] : "");
+      t = t ? t + " " + s : s;
+    }
+    return t;
+  };
+  const enteros = x => {
+    if (x === 0) return "cero";
+    const millones = Math.floor(x / 1e6), miles = Math.floor((x % 1e6) / 1000), resto = x % 1000;
+    const partes = [];
+    if (millones) partes.push(millones === 1 ? "un millón" : menosDeMil(millones) + " millones");
+    if (miles) partes.push(miles === 1 ? "mil" : menosDeMil(miles) + " mil");
+    if (resto) partes.push(menosDeMil(resto));
+    return partes.join(" ");
+  };
+  const total = Math.round((Number(n) || 0) * 100);
+  const e = Math.floor(total / 100), c = total % 100;
+  let txt = enteros(e) + (e === 1 ? " euro" : (e >= 1e6 && e % 1e6 === 0 ? " de euros" : " euros"));
+  if (c) txt += " con " + enteros(c) + (c === 1 ? " céntimo" : " céntimos");
+  return txt;
+}
