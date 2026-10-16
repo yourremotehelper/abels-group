@@ -8,6 +8,7 @@
 <link rel="stylesheet" href="css/styles.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js"></script>
 <style>
   /* Pantalla pensada para el ordenador de la oficina */
   .screen.ancha { max-width: 1040px; }
@@ -96,7 +97,7 @@
     </div>
     <div class="acciones">
       <button class="primary" id="pdfBtn" disabled>Recibís de los seleccionados (uno por trabajador)</button>
-      <button class="secondary" id="resumenBtn" disabled style="height:46px;">Resumen para la gestora</button>
+      <button class="secondary" id="resumenBtn" disabled style="height:46px;">Resumen para la gestora (Excel)</button>
     </div>
     <p id="msg" style="font-size:13px;color:var(--text-muted);margin:10px 0 0;"></p>
   </div>
@@ -426,7 +427,7 @@
     let y = pdf.lastAutoTable.finalY + 6;
     pdf.autoTable({
       startY: y,
-      margin: { left: W / 2, right: M },
+      margin: { left: W / 2 - 20, right: M },
       body: [
         ["Horas normales", `${h(f.normales)} h`, euros(f.importeNormal)],
         ["Horas extra", `${h(f.extra)} h`, euros(f.importeExtra)],
@@ -438,7 +439,7 @@
       ],
       styles: { fontSize: 10, cellPadding: 1.8 },
       theme: "plain",
-      columnStyles: { 1: { halign: "right" }, 2: { halign: "right" } }
+      columnStyles: { 0: { cellWidth: "auto" }, 1: { halign: "right", cellWidth: 16 }, 2: { halign: "right", cellWidth: 30 } }
     });
 
     y = pdf.lastAutoTable.finalY + 14;
@@ -511,27 +512,122 @@
     $("msg").textContent = `${sel.length} recibí(s) descargado(s), uno por trabajador. Si el navegador pregunta si permites varias descargas, pulsa "Permitir".`;
   });
 
-  $("resumenBtn").addEventListener("click", () => {
+  // Resumen para la gestora en Excel, con formato y fórmulas
+  $("resumenBtn").addEventListener("click", async () => {
     const sel = filas.filter(f => f.sel);
-    const { jsPDF } = window.jspdf;
-    const pdf = new jsPDF({ unit: "mm", format: "a4" });
-    cabecera(pdf, "RESUMEN DE PAGOS", 210, 14);
-    pdf.setFontSize(10);
-    pdf.text(`Periodo ${periodoTxt()}`, 14, 44);
-    pdf.autoTable({
-      startY: 49,
-      head: [["Trabajador", "DNI/NIE", "Días", "H. normales", "H. extra", "Importe", "Adelantos", "A pagar"]],
-      body: sel.map(f => [nombreDocumento(f.emp), f.emp.dni || "", f.dias.length, h(f.normales), h(f.extra), euros(f.importe),
-        f.totalAdelantos ? "-" + euros(f.totalAdelantos) : "", euros(f.aPagar)]),
-      foot: [["TOTAL", "", sel.reduce((s, f) => s + f.dias.length, 0), h(sel.reduce((s, f) => s + f.normales, 0)),
-        h(sel.reduce((s, f) => s + f.extra, 0)), euros(sel.reduce((s, f) => s + f.importe, 0)),
-        "-" + euros(sel.reduce((s, f) => s + f.totalAdelantos, 0)), euros(sel.reduce((s, f) => s + f.aPagar, 0))]],
-      styles: { fontSize: 9, cellPadding: 1.8 },
-      headStyles: { fillColor: [216, 90, 48] },
-      footStyles: { fillColor: [240, 236, 230], textColor: 20 },
-      columnStyles: { 2: { halign: "right" }, 3: { halign: "right" }, 4: { halign: "right" }, 5: { halign: "right" }, 6: { halign: "right" }, 7: { halign: "right" } }
+    if (!window.ExcelJS) { $("msg").textContent = "No se ha podido cargar el generador de Excel. Revisa la conexión y recarga."; return; }
+    const wb = new ExcelJS.Workbook();
+    wb.creator = empresa.nombre || "Abel's";
+    const NARANJA = "FFD85A30", GRIS = "FFF0ECE6";
+    const EUR = '#,##0.00 "€"', HORAS = '#,##0.0#';
+    const borde = { top: { style: "thin", color: { argb: "FFD9D4CC" } }, bottom: { style: "thin", color: { argb: "FFD9D4CC" } } };
+
+    function cabeceraHoja(ws, titulo, nCols) {
+      ws.pageSetup = { paperSize: 9, orientation: "landscape", fitToPage: true, fitToWidth: 1, fitToHeight: 0,
+        margins: { left: 0.4, right: 0.4, top: 0.5, bottom: 0.5, header: 0.2, footer: 0.2 }, printTitlesRow: "4:4" };
+      ws.mergeCells(1, 1, 1, nCols);
+      ws.getCell(1, 1).value = titulo;
+      ws.getCell(1, 1).font = { bold: true, size: 14 };
+      ws.mergeCells(2, 1, 2, nCols);
+      ws.getCell(2, 1).value = `${empresa.nombre || ""}${empresa.cif ? " · CIF " + empresa.cif : ""} · Periodo ${periodoTxt()}`;
+      ws.getCell(2, 1).font = { size: 10, color: { argb: "FF5F5E5A" } };
+    }
+    function filaTitulos(ws, fila, titulos) {
+      const r = ws.getRow(fila);
+      titulos.forEach((t, i) => {
+        const c = r.getCell(i + 1);
+        c.value = t;
+        c.font = { bold: true, color: { argb: "FFFFFFFF" } };
+        c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: NARANJA } };
+        c.alignment = { vertical: "middle", horizontal: i === 0 ? "left" : "center", wrapText: true };
+      });
+      r.height = 30;
+    }
+
+    // ---- Hoja 1: resumen por trabajador ----
+    const ws = wb.addWorksheet("Resumen", { views: [{ state: "frozen", ySplit: 4 }] });
+    const tit = ["Trabajador", "DNI/NIE", "Días", "Horas normales", "€/hora", "Importe normales",
+      "Horas extra", "€/hora extra", "Importe extra", "Total periodo", "Adelantos", "A pagar"];
+    cabeceraHoja(ws, "Resumen de pagos", tit.length);
+    filaTitulos(ws, 4, tit);
+    ws.columns = [{ width: 30 }, { width: 13 }, { width: 7 }, { width: 10 }, { width: 9 }, { width: 13 },
+      { width: 9 }, { width: 10 }, { width: 12 }, { width: 13 }, { width: 12 }, { width: 13 }];
+    const primera = 5;
+    sel.forEach((f, i) => {
+      const n = primera + i;
+      const r = ws.getRow(n);
+      r.values = [nombreDocumento(f.emp), f.emp.dni || "", f.dias.length, f.normales, f.precio,
+        { formula: `D${n}*E${n}`, result: f.importeNormal }, f.extra, f.precioExtra,
+        { formula: `G${n}*H${n}`, result: f.importeExtra }, { formula: `F${n}+I${n}`, result: f.importe },
+        f.totalAdelantos, { formula: `J${n}-K${n}`, result: f.aPagar }];
+      [4, 7].forEach(c => r.getCell(c).numFmt = HORAS);
+      [5, 6, 8, 9, 10, 11, 12].forEach(c => r.getCell(c).numFmt = EUR);
+      r.eachCell(c => c.border = borde);
+      if (i % 2) r.eachCell(c => c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFFAF8F5" } });
     });
-    pdf.save(nombreArchivo("resumen_pagos"));
+    const ultima = primera + sel.length - 1;
+    const t = ws.getRow(ultima + 1);
+    t.getCell(1).value = "TOTAL";
+    const sumar = col => ({ formula: `SUM(${col}${primera}:${col}${ultima})`, result: 0 });
+    const totales = { C: sel.reduce((s, f) => s + f.dias.length, 0), D: sel.reduce((s, f) => s + f.normales, 0),
+      F: sel.reduce((s, f) => s + f.importeNormal, 0), G: sel.reduce((s, f) => s + f.extra, 0),
+      I: sel.reduce((s, f) => s + f.importeExtra, 0), J: sel.reduce((s, f) => s + f.importe, 0),
+      K: sel.reduce((s, f) => s + f.totalAdelantos, 0), L: sel.reduce((s, f) => s + f.aPagar, 0) };
+    Object.entries(totales).forEach(([col, v]) => {
+      const c = t.getCell(col);
+      c.value = { ...sumar(col), result: r2(v) };
+      c.numFmt = ["D", "G"].includes(col) ? HORAS : col === "C" ? "0" : EUR;
+    });
+    t.eachCell({ includeEmpty: true }, c => {
+      c.font = { bold: true };
+      c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: GRIS } };
+      c.border = { top: { style: "medium" } };
+    });
+    ws.autoFilter = { from: { row: 4, column: 1 }, to: { row: ultima, column: tit.length } };
+
+    // ---- Hoja 2: detalle por días ----
+    const wd = wb.addWorksheet("Detalle por días", { views: [{ state: "frozen", ySplit: 4 }] });
+    const titD = ["Trabajador", "Fecha", "Obra", "Entrada", "Salida", "Horas normales", "Horas extra", "Importe"];
+    cabeceraHoja(wd, "Detalle por días", titD.length);
+    filaTitulos(wd, 4, titD);
+    wd.columns = [{ width: 30 }, { width: 12 }, { width: 24 }, { width: 9 }, { width: 9 }, { width: 10 }, { width: 9 }, { width: 12 }];
+    let n = 5;
+    sel.forEach(f => f.dias.forEach(d => {
+      const [y, m, dd] = d.fecha.split("-").map(Number);
+      const r = wd.getRow(n++);
+      r.values = [nombreDocumento(f.emp), new Date(Date.UTC(y, m - 1, dd)), d.obra, d.entrada, d.salida, d.normales, d.extra, d.importe];
+      r.getCell(2).numFmt = "dd/mm/yyyy";
+      [6, 7].forEach(c => r.getCell(c).numFmt = HORAS);
+      r.getCell(8).numFmt = EUR;
+      r.eachCell(c => c.border = borde);
+    }));
+    if (n > 5) wd.autoFilter = { from: { row: 4, column: 1 }, to: { row: n - 1, column: titD.length } };
+
+    // ---- Hoja 3: adelantos ----
+    const adel = sel.flatMap(f => (f.adelantos || []).map(a => ({ f, a })));
+    if (adel.length) {
+      const wa = wb.addWorksheet("Adelantos", { views: [{ state: "frozen", ySplit: 4 }] });
+      cabeceraHoja(wa, "Adelantos entregados", 4);
+      filaTitulos(wa, 4, ["Trabajador", "Fecha", "Importe", "Nota"]);
+      wa.columns = [{ width: 30 }, { width: 12 }, { width: 12 }, { width: 36 }];
+      adel.forEach(({ f, a }, i) => {
+        const [y, m, dd] = a.fecha.split("-").map(Number);
+        const r = wa.getRow(5 + i);
+        r.values = [nombreDocumento(f.emp), new Date(Date.UTC(y, m - 1, dd)), Number(a.importe) || 0, a.nota || ""];
+        r.getCell(2).numFmt = "dd/mm/yyyy";
+        r.getCell(3).numFmt = EUR;
+        r.eachCell(c => c.border = borde);
+      });
+    }
+
+    const buf = await wb.xlsx.writeBuffer();
+    const url = URL.createObjectURL(new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }));
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = nombreArchivo("resumen_pagos").replace(/\.pdf$/, ".xlsx");
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 2000);
+    $("msg").textContent = "Resumen en Excel descargado.";
   });
 
   $("guardarEmpresa").addEventListener("click", async () => {
