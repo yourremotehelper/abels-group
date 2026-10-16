@@ -51,7 +51,11 @@
   </div>
 
   <div class="card">
-    <h1 style="font-size:16px;margin-bottom:10px;">Ausencias actuales y próximas</h1>
+    <h1 style="font-size:16px;margin-bottom:10px;">Ausencias apuntadas</h1>
+    <select id="verLista" class="campo" aria-label="Qué ausencias ver">
+      <option value="proximas">Actuales y próximas</option>
+      <option value="todas">Todas (también las pasadas)</option>
+    </select>
     <div id="lista"><div class="loading">Cargando...</div></div>
   </div>
 </div>
@@ -157,11 +161,14 @@
 
   async function pintarLista() {
     const hoy = fechaLocal();
-    const snap = await getDocs(query(collection(db, "ausencias"), where("hasta", ">=", hoy)));
-    const items = snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => a.desde.localeCompare(b.desde));
+    const todas = $("verLista").value === "todas";
+    const snap = todas
+      ? await getDocs(collection(db, "ausencias"))
+      : await getDocs(query(collection(db, "ausencias"), where("hasta", ">=", hoy)));
+    const items = snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => todas ? b.desde.localeCompare(a.desde) : a.desde.localeCompare(b.desde));
     const lista = $("lista");
     if (items.length === 0) {
-      lista.innerHTML = '<div class="placeholder" style="padding:16px 0;">No hay ausencias desde hoy en adelante.</div>';
+      lista.innerHTML = '<div class="placeholder" style="padding:16px 0;">No hay ausencias apuntadas.</div>';
       return;
     }
     lista.innerHTML = items.map(a => `
@@ -205,6 +212,7 @@
 
   $("desde").addEventListener("change", () => { if (!$("hasta").value || $("hasta").value < $("desde").value) $("hasta").value = $("desde").value; });
   $("diaSinFichar").addEventListener("change", pintarSinFichar);
+  $("verLista").addEventListener("change", pintarLista);
 
   requireAuth(async (user, p) => {
     if (!puedeGestionarFichajes(p)) {
