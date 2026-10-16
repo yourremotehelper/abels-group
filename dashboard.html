@@ -70,32 +70,22 @@
     controlAsistencia = puedeGestionarFichajes(perfil);
     if (!controlAsistencia) document.getElementById("leyendaSinFichar").remove();
 
-    // Menú según el rol: admin ve todo, oficina gestiona fichajes, encargado solo sus obras
+    // Inicio: tres bloques grandes con icono (el encargado solo ve el directorio y sus obras)
     const menu = document.createElement("div");
-    menu.className = "dashboard-menu";
-    function boton(texto, destino, principal) {
+    menu.className = "bloques";
+    function bloque(icono, titulo, detalle, destino, principal) {
       const b = document.createElement("button");
-      b.className = principal ? "primary" : "secondary";
-      b.textContent = texto;
+      b.className = "bloque" + (principal ? " principal" : "");
+      b.innerHTML = `<span class="ico" aria-hidden="true">${icono}</span><span class="txt"><b>${titulo}</b><span>${detalle}</span></span>`;
       b.addEventListener("click", () => window.location.href = destino);
       menu.appendChild(b);
     }
-
     if (puedeGestionarFichajes(perfil)) {
-      boton("Registro de asistencia (día vencido)", "registro.html", true);
-      boton("Ausencias y sin apuntar", "ausencias.html");
-      boton("Calendario de festivos", "festivos.html");
-      boton("Horas extra del año", "horas-extra.html");
-      boton("Exportar control de asistencia", "exportar.html");
-      if (esAdmin(perfil)) boton("RRHH", "pagos.html");
-    }
-    boton("Directorio de empleados", "empleados.html");
-    if (puedeGestionarFichajes(perfil)) {
-      boton("Jornada y horas extra (ajustes)", "ajustes.html");
-    }
-    if (esAdmin(perfil)) {
-      boton("Gestionar obras", "obras.html");
-      boton("Gestionar usuarios", "usuarios.html");
+      bloque("📝", "Registro de asistencia", "Apuntar horas, horas extra y faltas", "registro.html", true);
+      bloque("👥", "RRHH", esAdmin(perfil) ? "Directorio, ausencias y vacaciones, horas extra, pagos" : "Directorio, ausencias y vacaciones, horas extra", "ausencias.html");
+      bloque("⚙️", "Ajustes", "Jornada, festivos" + (esAdmin(perfil) ? ", obras y usuarios" : ""), "ajustes.html");
+    } else {
+      bloque("📇", "Directorio de empleados", "Teléfonos y datos de la cuadrilla", "empleados.html");
     }
     obrasCard.parentElement.insertBefore(menu, obrasCard);
 
