@@ -56,8 +56,10 @@
     collection, getDocs, query, where
   } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
   import {
-    fechaLocal, fechaBonita, puedeGestionarFichajes, cargarConfig, horasTrabajadas, TIPOS_AUSENCIA
+    fechaLocal, fechaBonita, puedeGestionarFichajes, cargarConfig, horasTrabajadas, TIPOS_AUSENCIA, nombreDocumento
   } from "./js/registro.js";
+  // En los documentos sale siempre el nombre real (si está puesto en el directorio)
+  const nombreReal = (id, porDefecto) => nombreDocumento(empleados.find(e => e.id === id)) || porDefecto || "";
   let cfg = null;
 
   const obraSelect = document.getElementById("obraSelect");
@@ -94,7 +96,7 @@
     obraSelect.innerHTML = '<option value="">Todas las obras</option>' +
       obras.map(o => `<option value="${o.id}">${o.nombre}</option>`).join("");
     empleadoSelect.innerHTML = '<option value="">Todos los trabajadores</option>' +
-      empleados.map(e => `<option value="${e.id}">${e.nombre}</option>`).join("");
+      empleados.map(e => `<option value="${e.id}">${e.nombre}${e.nombreReal && e.nombreReal !== e.nombre ? " (" + e.nombreReal + ")" : ""}</option>`).join("");
   }
 
   function nombreObra(id) {
@@ -149,7 +151,7 @@
     snaps.forEach(({ obraId: oid, snap }) => snap.forEach(d => {
       const f = d.data();
       if (empId && f.empleadoId !== empId) return;
-      filas.push({ obra: nombreObra(oid), ...f });
+      filas.push({ obra: nombreObra(oid), ...f, empleadoNombre: nombreReal(f.empleadoId, f.empleadoNombre) });
     }));
     filas.sort((a, b) => ((a.empleadoNombre || "") + a.fecha).localeCompare((b.empleadoNombre || "") + b.fecha));
 
@@ -171,7 +173,7 @@
 
   const cabeceraAus = ["Trabajador", "Motivo", "Justificada", "Desde", "Hasta", "Nota", "Apuntada por"];
   const filaAus = a => [
-    a.empleadoNombre || "", TIPOS_AUSENCIA[a.tipo] || a.tipo, a.tipo === "injustificada" ? "No" : "Sí",
+    nombreReal(a.empleadoId, a.empleadoNombre), TIPOS_AUSENCIA[a.tipo] || a.tipo, a.tipo === "injustificada" ? "No" : "Sí",
     fechaBonita(a.desde), fechaBonita(a.hasta || a.desde), a.nota || "", a.creadoPorNombre || ""
   ];
 
