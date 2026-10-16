@@ -12,10 +12,11 @@
   <div class="topbar">
     <button class="icon-btn" id="backBtn" title="Volver" aria-label="Volver">&#8592;</button>
     <div class="topbar-info">
-      <p class="topbar-obra">Administración</p>
-      <p class="topbar-title">Obras</p>
+      <p class="topbar-obra">⚙️ Ajustes</p>
+      <p class="topbar-title">🏗️ Obras</p>
     </div>
   </div>
+  <nav class="secciones" id="secciones"></nav>
 
   <div class="card">
     <h1 style="font-size:16px;margin-bottom:14px;">Crear nueva obra</h1>
@@ -40,10 +41,12 @@
 
 <script type="module">
   import { requireAuth } from "./js/auth.js";
+  import { pintarSecciones } from "./js/menu.js";
   import { db } from "./js/firebase-config.js";
   import {
     collection, getDocs, addDoc, doc, updateDoc, deleteDoc
   } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+  pintarSecciones("ajustes", "obras");
 
   const errorMsg = document.getElementById("errorMsg");
   const createBtn = document.getElementById("createBtn");
@@ -123,6 +126,7 @@
   });
 
   requireAuth((user, perfil) => {
+    pintarSecciones("ajustes", "obras", perfil);
     if (perfil.rol !== "admin") {
       alert("Solo un administrador puede gestionar obras.");
       window.location.href = "dashboard.html";
