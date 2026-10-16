@@ -43,8 +43,8 @@
     <input type="date" id="hasta">
 
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:6px;">
-      <button id="excelBtn" class="primary">Descargar Excel</button>
-      <button id="pdfBtn" class="secondary" style="height:46px;">Descargar PDF</button>
+      <button id="excelBtn" class="primary">Ver y descargar Excel</button>
+      <button id="pdfBtn" class="secondary" style="height:46px;">Ver y descargar PDF</button>
     </div>
     <p id="resultadoTxt" style="font-size:12px;color:var(--text-muted);margin:10px 0 0;"></p>
   </div>
@@ -53,6 +53,7 @@
 <script type="module">
   import { requireAuth } from "./js/auth.js";
   import { pintarSecciones } from "./js/menu.js";
+  import { vistaPrevia } from "./js/vista-previa.js";
   import { db } from "./js/firebase-config.js";
   import {
     collection, getDocs, query, where
@@ -184,7 +185,7 @@
   const extra = f => Number(f.horasExtra) || 0;
   const num = n => n ? Math.round(n * 100) / 100 : "";
 
-  const cabecera = ["Trabajador", "Fecha", "Obra", "Entrada", "Salida", "Horas trabajadas", "Normales", "Extra", "Conduce", "Registrado", "Registrado por", "Corregido", "Motivo corrección", "Presencia confirmada", "Ubicación entrada", "Ubicación salida"];
+  const cabecera = ["Trabajador", "Fecha", "Obra", "Entrada", "Salida", "Horas trabajadas", "Normales", "Extra", "Conduce", "Tarjeta", "Registrado", "Registrado por", "Corregido", "Motivo corrección", "Presencia confirmada", "Ubicación entrada", "Ubicación salida"];
 
   function filaDatos(f) {
     return [
@@ -197,6 +198,7 @@
       num(Math.max(0, trabajadas(f) - extra(f))),
       num(extra(f)),
       f.vehiculoNombre || "",
+      f.tarjetaNombre || "",
       origenTexto(f),
       f.fichadoPorNombre || "",
       f.modificado ? "Sí" : "",
@@ -241,11 +243,11 @@
     }
   }
 
-  excelBtn.addEventListener("click", () => ejecutar(excelBtn, "Descargar Excel", filas => {
+  excelBtn.addEventListener("click", () => ejecutar(excelBtn, "Ver y descargar Excel", filas => {
     const datos = [cabecera, ...filas.map(filaDatos)];
     const hoja = XLSX.utils.aoa_to_sheet(datos);
     hoja["!cols"] = [
-      { wch: 20 }, { wch: 11 }, { wch: 20 }, { wch: 8 }, { wch: 8 }, { wch: 10 }, { wch: 9 }, { wch: 7 }, { wch: 22 },
+      { wch: 20 }, { wch: 11 }, { wch: 20 }, { wch: 8 }, { wch: 8 }, { wch: 10 }, { wch: 9 }, { wch: 7 }, { wch: 22 }, { wch: 22 },
       { wch: 16 }, { wch: 16 }, { wch: 10 }, { wch: 28 }, { wch: 18 }, { wch: 22 }, { wch: 22 }
     ];
     const libro = XLSX.utils.book_new();
@@ -253,10 +255,15 @@
     const hojaAus = XLSX.utils.aoa_to_sheet([cabeceraAus, ...filas.ausencias.map(filaAus)]);
     hojaAus["!cols"] = [{ wch: 20 }, { wch: 24 }, { wch: 11 }, { wch: 11 }, { wch: 11 }, { wch: 30 }, { wch: 16 }];
     XLSX.utils.book_append_sheet(libro, hojaAus, "Ausencias");
-    XLSX.writeFile(libro, nombreArchivo("xlsx"));
+    const archivo = nombreArchivo("xlsx");
+    vistaPrevia({
+      titulo: "Excel de asistencia",
+      tablas: [{ nombre: "Fichajes", filas: datos }, { nombre: "Ausencias", filas: [cabeceraAus, ...filas.ausencias.map(filaAus)] }],
+      onDescargar: () => XLSX.writeFile(libro, archivo)
+    });
   }));
 
-  pdfBtn.addEventListener("click", () => ejecutar(pdfBtn, "Descargar PDF", filas => {
+  pdfBtn.addEventListener("click", () => ejecutar(pdfBtn, "Ver y descargar PDF", filas => {
     const { jsPDF } = window.jspdf;
     const pdf = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
     const titulo = "Control interno de asistencia · Reformas Abel Group S.L. (CIF B07887375)";
@@ -270,7 +277,7 @@
     pdf.setFontSize(9);
     pdf.text(filtros + "  ·  Documento interno: no sustituye al registro oficial de jornada", 14, 20);
     pdf.text(`Total: ${filas.length} fichajes · ${totalHoras(filas)} horas trabajadas · ${totalExtra(filas)} horas extra · ${filas.ausencias.length} ausencias`, 14, 25);
-    const colsPdf = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 11, 13];
+    const colsPdf = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 12, 14];
     pdf.autoTable({
       startY: 29,
       head: [colsPdf.map(i => cabecera[i])],
@@ -287,7 +294,8 @@
         headStyles: { fillColor: [95, 94, 90] }
       });
     }
-    pdf.save(nombreArchivo("pdf"));
+    const archivo = nombreArchivo("pdf");
+    vistaPrevia({ titulo: "PDF de asistencia", documentos: [{ nombre: "Asistencia", pdf }], onDescargar: () => pdf.save(archivo) });
   }));
 
   requireAuth(async (user, perfil) => {
