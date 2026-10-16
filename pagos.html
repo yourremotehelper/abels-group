@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<title>Abel's | Pagos y recibís</title>
+<title>Abel's | RRHH</title>
 <link rel="manifest" href="manifest.json">
 <link rel="stylesheet" href="css/styles.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
@@ -11,7 +11,6 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js"></script>
 <style>
   /* Pantalla pensada para el ordenador de la oficina */
-  .screen.ancha { max-width: 1040px; }
   .filtros { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; align-items: end; }
   .filtros > div { min-width: 0; }
   .filtros input, .filtros select { margin-bottom: 0; }
@@ -32,9 +31,6 @@
   .ant-form button { width: auto; height: 36px; padding: 0 12px; font-size: 13px; }
   @media (max-width: 760px) { .ant-form { grid-template-columns: 1fr 1fr; } }
   .neg { color: var(--danger); }
-  .secciones { display: flex; gap: 8px; margin-bottom: 14px; flex-wrap: wrap; }
-  .secciones a { padding: 9px 18px; border-radius: 20px; font-size: 14px; text-decoration: none; border: 1px solid var(--border); background: var(--surface); color: var(--text-secondary); }
-  .secciones a.activa { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
   .acciones { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 14px; }
   .acciones button { width: auto; padding: 0 18px; }
 </style>
@@ -44,15 +40,12 @@
   <div class="topbar">
     <button class="icon-btn" id="backBtn" title="Volver" aria-label="Volver">&#8592;</button>
     <div class="topbar-info">
-      <p class="topbar-obra">Administración</p>
-      <p class="topbar-title">Pagos y recibís</p>
+      <p class="topbar-obra">👥 RRHH</p>
+      <p class="topbar-title">💶 Pagos y recibís</p>
     </div>
   </div>
+  <nav class="secciones" id="secciones"></nav>
 
-  <nav class="secciones" aria-label="Secciones">
-    <a href="pagos.html" class="activa">Pagos de horas extra</a>
-    <a href="vacaciones.html">Vacaciones</a>
-  </nav>
 
   <div class="card">
     <div class="filtros">
@@ -118,6 +111,7 @@
 
 <script type="module">
   import { requireAuth } from "./js/auth.js";
+  import { pintarSecciones } from "./js/menu.js";
   import { db } from "./js/firebase-config.js";
   import {
     collection, getDocs, doc, setDoc, addDoc, deleteDoc, updateDoc, query, where, serverTimestamp
@@ -126,6 +120,7 @@
     esAdmin, esc, fechaLocal, fechaBonita, nombreDocumento, euros, importeEnLetras, diaLaborableAnterior
   } from "./js/registro.js";
   import { EMPRESA, cargarLugar, guardarLugar, nuevoPDF, cabeceraPDF, firmasPDF, parrafoPDF } from "./js/documentos.js";
+  pintarSecciones("rrhh", "pagos");
 
   const $ = id => document.getElementById(id);
   $("backBtn").addEventListener("click", () => window.location.href = "dashboard.html");
@@ -634,6 +629,7 @@
   });
 
   requireAuth(async (user, perfil) => {
+    pintarSecciones("rrhh", "pagos", perfil);
     if (!esAdmin(perfil)) {
       alert("Esta pantalla es solo para administración.");
       window.location.href = "dashboard.html";
