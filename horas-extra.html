@@ -18,14 +18,15 @@
 </style>
 </head>
 <body>
-<div class="screen">
+<div class="screen ancha">
   <div class="topbar">
     <button class="icon-btn" id="backBtn" title="Volver" aria-label="Volver">&#8592;</button>
     <div class="topbar-info">
-      <p class="topbar-obra">Oficina</p>
-      <p class="topbar-title">Horas extra del año</p>
+      <p class="topbar-obra">👥 RRHH</p>
+      <p class="topbar-title">⏱️ Horas extra del año</p>
     </div>
   </div>
+  <nav class="secciones" id="secciones"></nav>
 
   <div class="card" style="display:flex;gap:10px;align-items:center;">
     <label for="anio" style="margin:0;">Año</label>
@@ -40,9 +41,11 @@
 
 <script type="module">
   import { requireAuth } from "./js/auth.js";
+  import { pintarSecciones } from "./js/menu.js";
   import { db } from "./js/firebase-config.js";
   import { collection, getDocs, query, where } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
   import { cargarConfig, puedeGestionarFichajes, esc, avatar, fechaBonita, textoHoras } from "./js/registro.js";
+  pintarSecciones("rrhh", "extras");
 
   const $ = id => document.getElementById(id);
   $("backBtn").addEventListener("click", () => window.location.href = "dashboard.html");
@@ -120,6 +123,7 @@
   $("anio").addEventListener("change", calcular);
 
   requireAuth(async (user, p) => {
+    pintarSecciones("rrhh", "extras", p);
     if (!puedeGestionarFichajes(p)) {
       alert("Esta pantalla es solo para oficina y administración.");
       window.location.href = "dashboard.html";
