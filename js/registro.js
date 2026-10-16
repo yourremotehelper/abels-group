@@ -194,8 +194,11 @@ export function diaLaborableAnterior(d = new Date()) {
   return fechaLocal(x);
 }
 
+// 1234.5 -> "1.234,50 €" (con punto de miles también en cifras de 4 dígitos)
 export function euros(n) {
-  return (Number(n) || 0).toLocaleString("es-ES", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " €";
+  const v = Math.round((Number(n) || 0) * 100) / 100;
+  const [ent, dec] = Math.abs(v).toFixed(2).split(".");
+  return (v < 0 ? "-" : "") + ent.replace(/\B(?=(\d{3})+(?!\d))/g, ".") + "," + dec + " €";
 }
 
 // Importe en letras para el recibí: 1234.5 -> "mil doscientos treinta y cuatro euros con cincuenta céntimos"
