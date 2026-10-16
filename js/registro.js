@@ -125,20 +125,33 @@ export const CONFIG_POR_DEFECTO = {
 };
 
 export async function cargarConfig() {
+  const [cfg, festivos] = await Promise.all([
+    _getDoc(_doc(db, "config", "jornada")).then(s => (s.exists() ? s.data() : {})).catch(() => ({})),
+    cargarFestivos()
+  ]);
+  return { ...CONFIG_POR_DEFECTO, ...cfg, festivos };
+}
+
+// Festivos: { "2026-01-01": "Año Nuevo", ... } (se editan en "Calendario de festivos")
+export async function cargarFestivos() {
   try {
-    const snap = await _getDoc(_doc(db, "config", "jornada"));
-    return { ...CONFIG_POR_DEFECTO, ...(snap.exists() ? snap.data() : {}) };
+    const snap = await _getDoc(_doc(db, "config", "festivos"));
+    return (snap.exists() && snap.data().dias) || {};
   } catch {
-    return { ...CONFIG_POR_DEFECTO };
+    return {};
   }
+}
+
+export function esFestivo(fecha, cfg) {
+  return !!(cfg && cfg.festivos && cfg.festivos[fecha]);
 }
 
 const aMin = h => { if (!h) return null; const [a, b] = h.split(":").map(Number); return a * 60 + b; };
 
-// Horas de jornada que tocan ese día (0 sábados y domingos)
+// Horas de jornada que tocan ese día (0 sábados, domingos y festivos: todo lo trabajado es extra)
 export function horasDelDia(fecha, cfg) {
   const dia = new Date(fecha + "T12:00:00").getDay();
-  if (dia === 0 || dia === 6) return 0;
+  if (dia === 0 || dia === 6 || esFestivo(fecha, cfg)) return 0;
   return dia === 5 ? Number(cfg.horasViernes) : Number(cfg.horasLunesJueves);
 }
 
