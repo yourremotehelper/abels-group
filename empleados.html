@@ -55,6 +55,9 @@
       <label class="check-row" for="carnet"><input type="checkbox" id="carnet"> Tiene carnet de conducir</label>
       <input type="text" id="carnetTipo" placeholder="Tipo de carnet (B, C...)" style="display:none;">
 
+      <label for="tarjetaSelect">Tarjeta de empresa</label>
+      <select id="tarjetaSelect" class="campo"><option value="">No tiene</option></select>
+
       <label for="obraSelect">Obra asignada</label>
       <select id="obraSelect" class="campo">
         <option value="">Sin asignar</option>
@@ -71,6 +74,17 @@
       <option value="">Todas las categorías</option>
     </select>
     <div id="empleadosList"><div class="loading">Cargando...</div></div>
+  </div>
+
+  <div class="card" id="tarjetasCard">
+    <h1 style="font-size:16px;margin-bottom:4px;">Tarjetas de empresa</h1>
+    <p style="font-size:12px;color:var(--text-muted);margin:0 0 10px;">Para saber quién lleva cada tarjeta sin tener que preguntar. Apunta solo los 4 últimos números, nunca el número completo.</p>
+    <div id="tarjetasList"><div class="loading">Cargando...</div></div>
+    <div style="display:grid;grid-template-columns:1fr 110px auto;gap:8px;margin-top:12px;">
+      <input type="text" id="tarNombre" placeholder="Ej.: Gasolina Repsol" style="margin-bottom:0;">
+      <input type="text" id="tarUltimos" placeholder="Últimos 4" maxlength="4" inputmode="numeric" style="margin-bottom:0;">
+      <button class="secondary" id="tarAddBtn" style="width:auto;padding:0 14px;height:44px;">Añadir</button>
+    </div>
   </div>
 
   <div class="card" id="vehiculosCard">
@@ -107,6 +121,10 @@
   let todosLosEmpleados = [];
   let obras = [];
   let vehiculos = [];
+  let tarjetas = [];
+  const nombreTarjeta = id => { const t = tarjetas.find(x => x.id === id); return t ? t.nombre + (t.ultimos ? " ···· " + t.ultimos : "") : ""; };
+  const opcionesTarjeta = sel => '<option value="">No tiene</option>' +
+    tarjetas.map(t => `<option value="${t.id}" ${t.id === sel ? "selected" : ""}>${esc(nombreTarjeta(t.id))}</option>`).join("");
   let fotoNueva = "";
   let puedeEditarVehiculos = false;
 
@@ -162,6 +180,7 @@
       categorias.map(c => `<option value="${esc(c)}" ${c === categoriaActual ? "selected" : ""}>${esc(c)}</option>`).join("");
 
     pintarLista();
+    pintarTarjetas();   // actualiza quién lleva cada tarjeta
   }
 
   function pintarLista() {
@@ -194,7 +213,8 @@
             ${emp.nombreReal && emp.nombreReal !== emp.nombre ? `<p class="obra-meta">Nombre real: ${esc(emp.nombreReal)}</p>` : ""}
             <p class="obra-meta">${esc(emp.categoria || "Sin categoría")} · ${emp.telefono ? `<a href="tel:${esc(emp.telefono)}" style="color:var(--accent-dark);">${esc(emp.telefono)}</a>` : "sin teléfono"}</p>
             <p class="obra-meta">Obra: ${esc(nombreObra(emp.obraAsignada))}</p>
-            <p class="obra-meta">${carnet ? `<span class="chip ok">Carnet: ${esc(carnet)}</span>` : '<span class="chip">Sin carnet</span>'}</p>
+            <p class="obra-meta">${carnet ? `<span class="chip ok">Carnet: ${esc(carnet)}</span>` : '<span class="chip">Sin carnet</span>'}
+              ${emp.tarjetaId && nombreTarjeta(emp.tarjetaId) ? `<span class="chip ok">Tarjeta: ${esc(nombreTarjeta(emp.tarjetaId))}</span>` : ""}</p>
           </div>
         </div>
         <div style="display:flex;gap:6px;">
@@ -235,6 +255,8 @@
         <input type="text" class="edit-telefono" value="${esc(emp.telefono || "")}" placeholder="Teléfono" style="margin-bottom:8px;">
         <label class="check-row"><input type="checkbox" class="edit-carnet" ${emp.carnet ? "checked" : ""}> Tiene carnet de conducir</label>
         <input type="text" class="edit-carnet-tipo" value="${esc(emp.carnetTipo || "")}" placeholder="Tipo de carnet (B, C...)" style="margin-bottom:8px;${emp.carnet ? "" : "display:none;"}">
+        <label style="font-size:12px;margin-bottom:4px;">Tarjeta de empresa</label>
+        <select class="campo edit-tarjeta" style="margin-bottom:8px;">${opcionesTarjeta(emp.tarjetaId || "")}</select>
         <select class="campo edit-obra" style="margin-bottom:10px;">
           ${opcionesObras(emp.obraAsignada)}
         </select>
@@ -274,6 +296,7 @@
         categoria: item.querySelector(".edit-categoria").value.trim(),
         telefono: item.querySelector(".edit-telefono").value.trim(),
         obraAsignada: item.querySelector(".edit-obra").value,
+        tarjetaId: item.querySelector(".edit-tarjeta").value,
         carnet: chk.checked,
         carnetTipo: chk.checked ? tipo.value.trim() : "",
         foto: fotoEditada
@@ -295,6 +318,7 @@
       categoria: document.getElementById("categoria").value.trim(),
       telefono: document.getElementById("telefono").value.trim(),
       obraAsignada: obraSelect.value,
+      tarjetaId: document.getElementById("tarjetaSelect").value,
       carnet: carnetCheck.checked,
       carnetTipo: carnetCheck.checked ? carnetTipo.value.trim() : "",
       foto: fotoNueva,
@@ -342,6 +366,49 @@
     }));
   }
 
+  // ---- Tarjetas de empresa ----
+  async function cargarTarjetas() {
+    const snap = await getDocs(collection(db, "tarjetas"));
+    tarjetas = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+      .sort((a, b) => (a.nombre || "").localeCompare(b.nombre || ""));
+    document.getElementById("tarjetaSelect").innerHTML = opcionesTarjeta("");
+    pintarTarjetas();
+  }
+
+  function pintarTarjetas() {
+    const lista = document.getElementById("tarjetasList");
+    if (tarjetas.length === 0) {
+      lista.innerHTML = '<p style="font-size:13px;color:var(--text-muted);margin:0;">Todavía no hay tarjetas. Añade la primera abajo.</p>';
+      return;
+    }
+    lista.innerHTML = tarjetas.map(t => {
+      const quien = todosLosEmpleados.filter(e => e.tarjetaId === t.id).map(e => e.nombre);
+      return `
+      <div class="vehiculo-item">
+        <span>${esc(nombreTarjeta(t.id))} <span style="color:var(--text-muted);">· ${quien.length ? esc(quien.join(", ")) : "sin asignar"}</span></span>
+        ${puedeEditarVehiculos ? `<button class="link-btn btn-borrar-tar" data-id="${t.id}" style="color:var(--danger);">quitar</button>` : ""}
+      </div>`;
+    }).join("");
+    lista.querySelectorAll(".btn-borrar-tar").forEach(b => b.addEventListener("click", async () => {
+      const t = tarjetas.find(x => x.id === b.dataset.id);
+      if (!confirm(`¿Quitar la tarjeta ${nombreTarjeta(t.id)}? Los trabajadores que la tengan quedarán sin tarjeta.`)) return;
+      await deleteDoc(doc(db, "tarjetas", t.id));
+      await Promise.all(todosLosEmpleados.filter(e => e.tarjetaId === t.id).map(e => updateDoc(doc(db, "empleados", e.id), { tarjetaId: "" })));
+      await cargarTarjetas();
+      await cargarEmpleados();
+    }));
+  }
+
+  document.getElementById("tarAddBtn").addEventListener("click", async () => {
+    const nombre = document.getElementById("tarNombre").value.trim();
+    const ultimos = document.getElementById("tarUltimos").value.replace(/\D/g, "").slice(-4);
+    if (!nombre) { document.getElementById("tarNombre").focus(); return; }
+    await addDoc(collection(db, "tarjetas"), { nombre, ultimos });
+    document.getElementById("tarNombre").value = "";
+    document.getElementById("tarUltimos").value = "";
+    cargarTarjetas();
+  });
+
   document.getElementById("vehAddBtn").addEventListener("click", async () => {
     const nombre = document.getElementById("vehNombre").value.trim();
     const matricula = document.getElementById("vehMatricula").value.trim().toUpperCase();
@@ -359,9 +426,11 @@
     puedeEditarVehiculos = puedeGestionarFichajes(perfil);
     if (!puedeEditarVehiculos) {
       document.getElementById("vehAddBtn").parentElement.style.display = "none";
+      document.getElementById("tarAddBtn").parentElement.style.display = "none";
     }
     await cargarObras();
-    cargarEmpleados();
+    await cargarTarjetas();
+    await cargarEmpleados();
     cargarVehiculos();
   });
 </script>
