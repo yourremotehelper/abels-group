@@ -282,3 +282,24 @@ select.campo {
 
 /* Las fechas y horas no deben salirse de su columna en móviles estrechos */
 input[type="date"], input[type="time"] { min-width: 0; max-width: 100%; }
+
+/* ---------- Menús agrupados (RRHH y Ajustes) ---------- */
+.screen.ancha { max-width: 1080px; }
+.secciones { display: flex; gap: 8px; margin-bottom: 16px; overflow-x: auto; padding-bottom: 2px; scrollbar-width: none; }
+.secciones::-webkit-scrollbar { display: none; }
+.secciones a { flex-shrink: 0; padding: 9px 14px; border-radius: 20px; font-size: 14px; text-decoration: none; border: 1px solid var(--border); background: var(--surface); color: var(--text-secondary); white-space: nowrap; }
+.secciones a.activa { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+.dos-col { display: grid; grid-template-columns: minmax(300px, 380px) 1fr; gap: 14px; align-items: start; }
+.dos-col > * { min-width: 0; }
+.dos-col > .card, .dos-col > div > .card:last-child { margin-bottom: 0; }
+@media (max-width: 760px) { .dos-col { grid-template-columns: 1fr; } }
+
+/* ---------- Inicio: bloques grandes con icono ---------- */
+.bloques { display: grid; gap: 10px; margin-bottom: 16px; }
+.bloque { display: flex; align-items: center; gap: 14px; width: 100%; padding: 16px; border-radius: 14px; border: 1px solid var(--border); background: var(--surface); color: var(--text); text-align: left; cursor: pointer; font: inherit; }
+.bloque .ico { font-size: 30px; line-height: 1; width: 44px; text-align: center; flex-shrink: 0; }
+.bloque .txt b { display: block; font-size: 17px; }
+.bloque .txt span { display: block; font-size: 12px; color: var(--text-muted); margin-top: 2px; }
+.bloque.principal { background: var(--accent); border-color: var(--accent); color: #fff; }
+.bloque.principal .txt span { color: rgba(255,255,255,0.85); }
+.bloque:active { transform: scale(0.99); }
