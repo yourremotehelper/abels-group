@@ -112,6 +112,7 @@
 <script type="module">
   import { requireAuth } from "./js/auth.js";
   import { pintarSecciones } from "./js/menu.js";
+  import { vistaPrevia, tablasDeExcelJS } from "./js/vista-previa.js";
   import { db } from "./js/firebase-config.js";
   import {
     collection, getDocs, doc, setDoc, addDoc, deleteDoc, updateDoc, query, where, serverTimestamp
@@ -341,8 +342,19 @@
         if (!fecha || !(importe > 0)) { $("msg").textContent = "Pon la fecha y el importe del anticipo."; return; }
         const a = { empleadoId: f.id, empleadoNombre: f.emp.nombre || "", fecha, importe, nota: fila.querySelector(".a-nota").value.trim() };
         try {
-          const ref = await addDoc(collection(db, "adelantos"), { ...a, registradoEn: serverTimestamp() });
-          if (conRecibi) recibiAnticipoPDF(f, a).save(`recibi_anticipo_${nombreDocumento(f.emp)}_${fecha}.pdf`.replace(/\s+/g, "_"));
+          let ref = null;
+          const guardarA = async () => { ref = await addDoc(collection(db, "adelantos"), { ...a, registradoEn: serverTimestamp() }); };
+          if (conRecibi) {
+            // Vista previa primero: el anticipo solo se guarda al descargar su recibí
+            const pdf = recibiAnticipoPDF(f, a);
+            const ok = await vistaPrevia({
+              titulo: `Recibí del anticipo de ${f.emp.nombre}`, documentos: [{ nombre: f.emp.nombre, pdf }],
+              botonDescargar: "Guardar y descargar",
+              nota: "Si algo no está bien, cierra y corrígelo: el anticipo no se guarda hasta pulsar «Guardar y descargar».",
+              onDescargar: async () => { await guardarA(); pdf.save(`recibi_anticipo_${nombreDocumento(f.emp)}_${fecha}.pdf`.replace(/\s+/g, "_")); }
+            });
+            if (!ok) return;
+          } else await guardarA();
           f.anticipos.push({ id: ref.id, ...a });
           f.anticipos.sort((x, y) => x.fecha.localeCompare(y.fecha));
           $("msg").textContent = `Anticipo de ${euros(importe)} para ${f.emp.nombre} guardado.`;
@@ -358,7 +370,9 @@
       fila.querySelector(".a-guardar-recibi").addEventListener("click", () => guardarAnticipo(true));
       fila.querySelectorAll(".b-ant-recibi").forEach(b => b.addEventListener("click", () => {
         const a = f.anticipos.find(x => x.id === b.dataset.id);
-        recibiAnticipoPDF(f, a).save(`recibi_anticipo_${nombreDocumento(f.emp)}_${a.fecha}.pdf`.replace(/\s+/g, "_"));
+        const pdf = recibiAnticipoPDF(f, a);
+        vistaPrevia({ titulo: `Recibí del anticipo de ${f.emp.nombre}`, documentos: [{ nombre: f.emp.nombre, pdf }],
+          onDescargar: () => pdf.save(`recibi_anticipo_${nombreDocumento(f.emp)}_${a.fecha}.pdf`.replace(/\s+/g, "_")) });
       }));
       fila.querySelectorAll(".b-ant-quitar").forEach(b => b.addEventListener("click", async () => {
         const a = f.anticipos.find(x => x.id === b.dataset.id);
@@ -496,15 +510,24 @@
     if (!lista.length) return;
     const sinPrecio = lista.filter(f => f.extra && !f.precio);
     if (sinPrecio.length && !confirm(`${sinPrecio.map(f => f.emp.nombre).join(", ")} no tiene(n) precio de hora extra. ¿Sacar el recibí igualmente?`)) return;
-    $("pdfBtn").disabled = true;
-    try {
-      for (let i = 0; i < lista.length; i++) {
-        const f = lista[i];
-        $("msg").textContent = lista.length > 1 ? `Descargando recibí ${i + 1} de ${lista.length}...` : "";
-        recibiPDF(f).save(`${nombreArchivo("recibi_" + nombreDocumento(f.emp))}.pdf`);
-        await marcarAnticipos(f);
-        if (lista.length > 1) await new Promise(r => setTimeout(r, 600));
+    const docs = lista.map(f => ({ f, nombre: f.emp.nombre || "", pdf: recibiPDF(f) }));
+    let fallo = false;
+    const ok = await vistaPrevia({
+      titulo: lista.length > 1 ? `Recibís (${lista.length})` : `Recibí de ${lista[0].emp.nombre}`,
+      documentos: docs,
+      nota: lista.length > 1 ? "Elige arriba el trabajador para ver cada recibí. Los anticipos se marcan como restados al descargar." : "Los anticipos se marcan como restados al descargar.",
+      onDescargar: async () => {
+        for (let i = 0; i < docs.length; i++) {
+          const { f, pdf } = docs[i];
+          pdf.save(`${nombreArchivo("recibi_" + nombreDocumento(f.emp))}.pdf`);
+          try { await marcarAnticipos(f); } catch (err) { console.error(err); fallo = true; }
+          if (docs.length > 1) await new Promise(r => setTimeout(r, 600));
+        }
       }
+    });
+    if (!ok) return;
+    try {
+      if (fallo) throw new Error("anticipos");
       $("msg").textContent = lista.length > 1
         ? `${lista.length} recibís descargados, uno por trabajador. Si el navegador pregunta si permites varias descargas, pulsa "Permitir".`
         : `Recibí de ${lista[0].emp.nombre} descargado.` + (sinNada.length ? " " + $("msg").textContent : "");
@@ -618,14 +641,21 @@
       });
     }
 
-    const buf = await wb.xlsx.writeBuffer();
-    const url = URL.createObjectURL(new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }));
-    const enlace = document.createElement("a");
-    enlace.href = url;
-    enlace.download = `${nombreArchivo("resumen_horas_extra")}.xlsx`;
-    document.body.appendChild(enlace); enlace.click(); enlace.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 2000);
-    $("msg").textContent = "Resumen en Excel descargado.";
+    const ok = await vistaPrevia({
+      titulo: "Resumen para la gestora (Excel)",
+      tablas: tablasDeExcelJS(wb),
+      nota: "Así quedará cada hoja del Excel (en el archivo, los totales llevan fórmulas).",
+      onDescargar: async () => {
+        const buf = await wb.xlsx.writeBuffer();
+        const url = URL.createObjectURL(new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }));
+        const enlace = document.createElement("a");
+        enlace.href = url;
+        enlace.download = `${nombreArchivo("resumen_horas_extra")}.xlsx`;
+        document.body.appendChild(enlace); enlace.click(); enlace.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 2000);
+      }
+    });
+    if (ok) $("msg").textContent = "Resumen en Excel descargado.";
   });
 
   requireAuth(async (user, perfil) => {
