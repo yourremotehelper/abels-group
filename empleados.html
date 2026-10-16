@@ -61,6 +61,12 @@
       <label for="tarjetaSelect">Tarjeta de empresa</label>
       <select id="tarjetaSelect" class="campo"><option value="">No tiene</option></select>
 
+      <div id="topeBox" style="display:none;">
+        <label for="topeExtras">Máximo de horas extra al año</label>
+        <input type="number" id="topeExtras" min="0" step="1" inputmode="numeric" placeholder="General">
+        <p style="font-size:12px;color:var(--text-muted);margin:-6px 0 12px;">Déjalo vacío para usar el máximo general de Ajustes.</p>
+      </div>
+
       <label for="obraSelect">Obra asignada</label>
       <select id="obraSelect" class="campo">
         <option value="">Sin asignar</option>
@@ -113,7 +119,7 @@
   import {
     collection, getDocs, addDoc, doc, updateDoc, deleteDoc
   } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
-  import { avatar, comprimirFoto, textoCarnet, esc, puedeGestionarFichajes } from "./js/registro.js";
+  import { avatar, comprimirFoto, textoCarnet, esc, puedeGestionarFichajes, cargarConfig } from "./js/registro.js";
   pintarSecciones("rrhh", "directorio");
 
   const errorMsg = document.getElementById("errorMsg");
@@ -136,6 +142,10 @@
     tarjetas.map(t => `<option value="${t.id}" ${t.id === sel ? "selected" : ""}>${esc(nombreTarjeta(t.id))}</option>`).join("");
   let fotoNueva = "";
   let puedeEditarVehiculos = false;
+  let topeGeneral = 0;
+  // Máximo propio del trabajador (vacío = el general de Ajustes)
+  const leerTope = v => { const t = String(v).trim(); return t === "" ? null : Math.max(0, Math.round(Number(t) || 0)); };
+  const tieneTopePropio = emp => emp.topeExtras !== undefined && emp.topeExtras !== null && emp.topeExtras !== "";
 
   document.getElementById("backBtn").addEventListener("click", () => {
     window.location.href = "dashboard.html";
@@ -223,7 +233,8 @@
             <p class="obra-meta">${esc(emp.categoria || "Sin categoría")} · ${emp.telefono ? `<a href="tel:${esc(emp.telefono)}" style="color:var(--accent-dark);">${esc(emp.telefono)}</a>` : "sin teléfono"}</p>
             <p class="obra-meta">Obra: ${esc(nombreObra(emp.obraAsignada))}</p>
             <p class="obra-meta">${carnet ? `<span class="chip ok">Carnet: ${esc(carnet)}</span>` : '<span class="chip">Sin carnet</span>'}
-              ${emp.tarjetaId && nombreTarjeta(emp.tarjetaId) ? `<span class="chip ok">Tarjeta: ${esc(nombreTarjeta(emp.tarjetaId))}</span>` : ""}</p>
+              ${emp.tarjetaId && nombreTarjeta(emp.tarjetaId) ? `<span class="chip ok">Tarjeta: ${esc(nombreTarjeta(emp.tarjetaId))}</span>` : ""}
+              ${puedeEditarVehiculos ? `<span class="chip ${tieneTopePropio(emp) ? "ok" : ""}">⏱️ Máx. extra: ${tieneTopePropio(emp) ? emp.topeExtras + " h/año" : "general (" + topeGeneral + " h)"}</span>` : ""}</p>
           </div>
         </div>
         <div style="display:flex;gap:6px;">
@@ -266,6 +277,11 @@
         <input type="text" class="edit-carnet-tipo" value="${esc(emp.carnetTipo || "")}" placeholder="Tipo de carnet (B, C...)" style="margin-bottom:8px;${emp.carnet ? "" : "display:none;"}">
         <label style="font-size:12px;margin-bottom:4px;">Tarjeta de empresa</label>
         <select class="campo edit-tarjeta" style="margin-bottom:8px;">${opcionesTarjeta(emp.tarjetaId || "")}</select>
+        <div style="${puedeEditarVehiculos ? "" : "display:none;"}">
+          <label style="font-size:12px;margin-bottom:4px;">Máximo de horas extra al año (vacío = general, ${topeGeneral} h)</label>
+          <input type="number" class="edit-tope" min="0" step="1" inputmode="numeric" value="${tieneTopePropio(emp) ? emp.topeExtras : ""}" placeholder="General" style="margin-bottom:8px;">
+        </div>
+        <label style="font-size:12px;margin-bottom:4px;">Obra asignada</label>
         <select class="campo edit-obra" style="margin-bottom:10px;">
           ${opcionesObras(emp.obraAsignada)}
         </select>
@@ -298,7 +314,7 @@
     item.querySelector(".btn-guardar").addEventListener("click", async () => {
       const nuevoNombre = item.querySelector(".edit-nombre").value.trim();
       if (!nuevoNombre) return;
-      await updateDoc(doc(db, "empleados", emp.id), {
+      const cambios = {
         nombre: nuevoNombre,
         nombreReal: item.querySelector(".edit-nombre-real").value.trim(),
         dni: item.querySelector(".edit-dni").value.trim().toUpperCase(),
@@ -309,7 +325,9 @@
         carnet: chk.checked,
         carnetTipo: chk.checked ? tipo.value.trim() : "",
         foto: fotoEditada
-      });
+      };
+      if (puedeEditarVehiculos) cambios.topeExtras = leerTope(item.querySelector(".edit-tope").value);
+      await updateDoc(doc(db, "empleados", emp.id), cambios);
       cargarEmpleados();
     });
   }
@@ -333,6 +351,7 @@
       foto: fotoNueva,
       activo: true
     };
+    if (puedeEditarVehiculos) datos.topeExtras = leerTope(document.getElementById("topeExtras").value);
 
     try {
       await addDoc(collection(db, "empleados"), datos);
@@ -437,6 +456,10 @@
     if (!puedeEditarVehiculos) {
       document.getElementById("vehAddBtn").parentElement.style.display = "none";
       document.getElementById("tarAddBtn").parentElement.style.display = "none";
+    } else {
+      document.getElementById("topeBox").style.display = "";
+      try { topeGeneral = Number((await cargarConfig()).topeAnualExtras) || 0; } catch {}
+      document.getElementById("topeExtras").placeholder = `General: ${topeGeneral} h`;
     }
     await cargarObras();
     await cargarTarjetas();
