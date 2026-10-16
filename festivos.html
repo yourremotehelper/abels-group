@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Abel's | Calendario de festivos</title>
+<link rel="manifest" href="manifest.json">
+<link rel="stylesheet" href="css/styles.css">
+<style>
+  .screen.ancha { max-width: 1040px; }
+  .meses { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 12px; }
+  .mes { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 10px; }
+  .mes h2 { font-size: 13px; margin: 0 0 6px; text-transform: capitalize; }
+  .rejilla { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; font-variant-numeric: tabular-nums; }
+  .rejilla .cab { font-size: 10px; color: var(--text-muted); text-align: center; padding: 2px 0; }
+  .dia { border: none; background: none; height: 28px; border-radius: 6px; font-size: 12px; cursor: pointer; color: var(--text); padding: 0; }
+  .dia:hover { background: var(--accent-bg); }
+  .dia.finde { color: var(--text-muted); }
+  .dia.festivo { background: var(--accent); color: #fff; font-weight: 700; }
+  .dia.hoy { outline: 2px solid var(--accent-dark); outline-offset: -2px; }
+  .lista-f { display: grid; gap: 6px; }
+  .lista-f .item { display: grid; grid-template-columns: 110px 1fr auto; gap: 8px; align-items: center; }
+  .lista-f input { margin: 0; height: 36px; font-size: 14px; }
+  .barra { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  .barra button { width: auto; padding: 0 16px; height: 40px; }
+</style>
+</head>
+<body>
+<div class="screen ancha">
+  <div class="topbar">
+    <button class="icon-btn" id="backBtn" title="Volver" aria-label="Volver">&#8592;</button>
+    <div class="topbar-info">
+      <p class="topbar-obra">Oficina</p>
+      <p class="topbar-title">Calendario de festivos</p>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="barra">
+      <select id="anio" class="campo" style="margin:0;width:auto;height:40px;"></select>
+      <button class="secondary" id="cargarOficiales">Cargar festivos</button>
+      <span id="msg" style="font-size:13px;color:var(--text-muted);"></span>
+    </div>
+    <p style="font-size:12px;color:var(--text-muted);margin:10px 0 0;">
+      Toca un día para marcarlo o desmarcarlo como festivo. Los días festivos cuentan entero como horas extra en el registro de asistencia,
+      no salen como falta y no cuentan como laborables en las vacaciones. Los cambios se guardan solos.
+    </p>
+  </div>
+
+  <div class="meses" id="meses"></div>
+
+  <div class="card" style="margin-top:14px;">
+    <h1 style="font-size:16px;margin-bottom:10px;">Festivos de <span id="anioTxt"></span></h1>
+    <div class="lista-f" id="lista"></div>
+  </div>
+</div>
+
+<script type="module">
+  import { requireAuth } from "./js/auth.js";
+  import { db } from "./js/firebase-config.js";
+  import { doc, setDoc } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+  import { puedeGestionarFichajes, cargarFestivos, fechaLocal, fechaBonita, esc } from "./js/registro.js";
+
+  const $ = id => document.getElementById(id);
+  $("backBtn").addEventListener("click", () => window.location.href = "dashboard.html");
+
+  // Calendario laboral oficial (CAIB) + fiestas locales de Palma. Revisar cada año con el BOIB.
+  const OFICIALES = {
+    2026: { "2026-01-01": "Año Nuevo", "2026-01-06": "Reyes", "2026-01-20": "Sant Sebastià (Palma)", "2026-03-02": "Lunes siguiente al Día de las Illes Balears",
+      "2026-04-02": "Jueves Santo", "2026-04-03": "Viernes Santo", "2026-04-06": "Lunes de Pascua", "2026-05-01": "Fiesta del Trabajo",
+      "2026-06-24": "Sant Joan (Palma)", "2026-08-15": "Asunción de la Virgen", "2026-10-12": "Fiesta Nacional", "2026-12-08": "Inmaculada Concepción",
+      "2026-12-25": "Navidad", "2026-12-26": "Segunda fiesta de Navidad" },
+    2027: { "2027-01-01": "Año Nuevo", "2027-01-06": "Reyes", "2027-01-20": "Sant Sebastià (Palma)", "2027-03-01": "Día de las Illes Balears",
+      "2027-03-25": "Jueves Santo", "2027-03-26": "Viernes Santo", "2027-03-29": "Lunes de Pascua", "2027-05-01": "Fiesta del Trabajo",
+      "2027-06-24": "Sant Joan (Palma)", "2027-10-12": "Fiesta Nacional", "2027-11-01": "Todos los Santos", "2027-12-06": "Día de la Constitución",
+      "2027-12-08": "Inmaculada Concepción", "2027-12-25": "Navidad" }
+  };
+
+  // Para cualquier otro año se calculan: fiestas fijas de España y Baleares, Semana Santa (según la fecha de Pascua)
+  // y las locales de Palma. Si alguna cae en domingo, el Govern suele trasladarla: se avisa para revisarlo con el BOIB.
+  function pascua(anio) {   // Domingo de Pascua (algoritmo de Gauss/Meeus)
+    const a = anio % 19, b = Math.floor(anio / 100), c = anio % 100, d = Math.floor(b / 4), e = b % 4;
+    const f = Math.floor((b + 8) / 25), g = Math.floor((b - f + 1) / 3), h = (19 * a + b - d - g + 15) % 30;
+    const i = Math.floor(c / 4), k = c % 4, l = (32 + 2 * e + 2 * i - h - k) % 7, m = Math.floor((a + 11 * h + 22 * l) / 451);
+    const mes = Math.floor((h + l - 7 * m + 114) / 31), dia = ((h + l - 7 * m + 114) % 31) + 1;
+    return new Date(anio, mes - 1, dia);
+  }
+  function calcularFestivos(anio) {
+    const f = (m, d) => fechaLocal(new Date(anio, m - 1, d));
+    const p = pascua(anio);
+    const mas = n => { const x = new Date(p); x.setDate(x.getDate() + n); return fechaLocal(x); };
+    return {
+      [f(1, 1)]: "Año Nuevo", [f(1, 6)]: "Reyes", [f(1, 20)]: "Sant Sebastià (Palma)", [f(3, 1)]: "Día de las Illes Balears",
+      [mas(-3)]: "Jueves Santo", [mas(-2)]: "Viernes Santo", [mas(1)]: "Lunes de Pascua", [f(5, 1)]: "Fiesta del Trabajo",
+      [f(6, 24)]: "Sant Joan (Palma)", [f(8, 15)]: "Asunción de la Virgen", [f(10, 12)]: "Fiesta Nacional", [f(11, 1)]: "Todos los Santos",
+      [f(12, 6)]: "Día de la Constitución", [f(12, 8)]: "Inmaculada Concepción", [f(12, 25)]: "Navidad"
+    };
+  }
+
+  let festivos = {};
+  const MESES = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
+
+  async function guardar(texto) {
+    try {
+      await setDoc(doc(db, "config", "festivos"), { dias: festivos });
+      $("msg").textContent = texto || "Guardado.";
+    } catch (err) {
+      console.error(err);
+      $("msg").textContent = "No se ha podido guardar. Revisa la conexión.";
+    }
+  }
+
+  function pintar() {
+    const anio = Number($("anio").value);
+    $("anioTxt").textContent = anio;
+    $("cargarOficiales").textContent = OFICIALES[anio] ? `Cargar festivos oficiales ${anio}` : `Calcular festivos de ${anio}`;
+    const hoy = fechaLocal();
+    $("meses").innerHTML = MESES.map((nombre, m) => {
+      const primero = new Date(anio, m, 1);
+      const hueco = (primero.getDay() + 6) % 7;   // lunes primero
+      const dias = new Date(anio, m + 1, 0).getDate();
+      let celdas = ["L", "M", "X", "J", "V", "S", "D"].map(c => `<div class="cab">${c}</div>`).join("");
+      celdas += "<div></div>".repeat(hueco);
+      for (let d = 1; d <= dias; d++) {
+        const f = fechaLocal(new Date(anio, m, d));
+        const dow = new Date(anio, m, d).getDay();
+        const cls = ["dia", dow === 0 || dow === 6 ? "finde" : "", festivos[f] ? "festivo" : "", f === hoy ? "hoy" : ""].join(" ");
+        celdas += `<button class="${cls}" data-f="${f}" title="${festivos[f] ? esc(festivos[f]) : ""}">${d}</button>`;
+      }
+      return `<div class="mes"><h2>${nombre}</h2><div class="rejilla">${celdas}</div></div>`;
+    }).join("");
+
+    $("meses").querySelectorAll(".dia").forEach(b => b.addEventListener("click", async () => {
+      const f = b.dataset.f;
+      if (festivos[f]) delete festivos[f];
+      else festivos[f] = "Festivo";
+      pintar();
+      await guardar(festivos[f] ? `${fechaBonita(f)} marcado como festivo.` : `${fechaBonita(f)} ya no es festivo.`);
+    }));
+
+    const delAnio = Object.keys(festivos).filter(f => f.startsWith(anio + "-")).sort();
+    $("lista").innerHTML = delAnio.length ? delAnio.map(f => `
+      <div class="item">
+        <span style="font-variant-numeric:tabular-nums;">${fechaBonita(f)}</span>
+        <input type="text" class="nombre-f" data-f="${f}" value="${esc(festivos[f])}" aria-label="Nombre del festivo">
+        <button class="link-btn b-quitar" data-f="${f}" style="color:var(--danger);">quitar</button>
+      </div>`).join("") : '<p style="font-size:13px;color:var(--text-muted);margin:0;">Ningún festivo marcado este año.</p>';
+    $("lista").querySelectorAll(".nombre-f").forEach(i => i.addEventListener("change", async () => {
+      festivos[i.dataset.f] = i.value.trim() || "Festivo";
+      await guardar("Nombre guardado.");
+    }));
+    $("lista").querySelectorAll(".b-quitar").forEach(b => b.addEventListener("click", async () => {
+      delete festivos[b.dataset.f];
+      pintar();
+      await guardar("Festivo quitado.");
+    }));
+  }
+
+  $("cargarOficiales").addEventListener("click", async () => {
+    const anio = Number($("anio").value);
+    const oficial = !!OFICIALES[anio];
+    const lista = OFICIALES[anio] || calcularFestivos(anio);
+    let n = 0;
+    const domingos = [];
+    Object.entries(lista).forEach(([f, nombre]) => {
+      if (!oficial && new Date(f + "T12:00:00").getDay() === 0) { domingos.push(`${nombre} (${fechaBonita(f)})`); return; }
+      if (!festivos[f]) { festivos[f] = nombre; n++; }
+    });
+    pintar();
+    let texto = n ? `${n} festivos añadidos.` : "Ya estaban todos.";
+    if (!oficial) texto += ` Son calculados: revisa con el BOIB de ${anio} cuáles se trasladan o cambian.`;
+    if (domingos.length) texto += ` Caen en domingo y no se han marcado: ${domingos.join(", ")}. Si el Govern los pasa al lunes, toca ese lunes en el calendario.`;
+    await guardar(texto);
+  });
+  $("anio").addEventListener("change", pintar);
+
+  requireAuth(async (user, p) => {
+    if (!puedeGestionarFichajes(p)) {
+      alert("Esta pantalla es solo para oficina y administración.");
+      window.location.href = "dashboard.html";
+      return;
+    }
+    const y = new Date().getFullYear();
+    $("anio").innerHTML = [y - 1, y, y + 1].map(a => `<option value="${a}" ${a === y ? "selected" : ""}>${a}</option>`).join("");
+    festivos = await cargarFestivos();
+    pintar();
+  });
+</script>
+</body>
+</html>
