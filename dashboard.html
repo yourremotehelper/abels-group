@@ -82,11 +82,11 @@
     }
 
     if (puedeGestionarFichajes(perfil)) {
-      boton("Control de asistencia (almacén)", "almacen.html", true);
-      boton("Registro manual y correcciones", "registro.html");
+      boton("Registro de asistencia (día vencido)", "registro.html", true);
       boton("Ausencias y sin apuntar", "ausencias.html");
       boton("Horas extra del año", "horas-extra.html");
       boton("Exportar control de asistencia", "exportar.html");
+      if (esAdmin(perfil)) boton("Pagos y recibís", "pagos.html");
     }
     boton("Directorio de empleados", "empleados.html");
     if (puedeGestionarFichajes(perfil)) {
