@@ -63,7 +63,7 @@
     collection, getDocs, addDoc, deleteDoc, doc, query, where, serverTimestamp
   } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
   import {
-    fechaLocal, horaLocal, fechaBonita, puedeGestionarFichajes, esc, avatar,
+    fechaLocal, horaLocal, fechaBonita, puedeGestionarFichajes, esc, avatar, diaLaborableAnterior,
     TIPOS_AUSENCIA, AUSENCIA_JUSTIFICADA, cargarAusenciasDelDia
   } from "./js/registro.js";
 
@@ -219,7 +219,7 @@
     obras = obrasSnap.docs.map(d => ({ id: d.id, ...d.data() }));
     $("empSel").innerHTML = '<option value="">Elegir trabajador...</option>' + empleados.map(e => `<option value="${e.id}">${esc(e.nombre)}</option>`).join("");
     $("tipoSel").innerHTML = opcionesTipo("vacaciones");
-    $("diaSinFichar").value = fechaLocal();
+    $("diaSinFichar").value = diaLaborableAnterior();
     $("desde").value = fechaLocal();
     $("hasta").value = fechaLocal();
     await Promise.all([pintarSinFichar(), pintarLista()]);
