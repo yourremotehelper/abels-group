@@ -37,8 +37,14 @@
         <input type="file" id="fotoInput" accept="image/*" capture="user">
       </div>
 
-      <label for="nombre">Nombre</label>
-      <input type="text" id="nombre" required placeholder="Marc Vidal">
+      <label for="nombre">Nombre con el que le llaman</label>
+      <input type="text" id="nombre" required placeholder="Ej.: Toni">
+
+      <label for="nombreReal">Nombre y apellidos reales (para recibís y documentos)</label>
+      <input type="text" id="nombreReal" placeholder="Ej.: Antonio García López">
+
+      <label for="dni">DNI / NIE (opcional, sale en el recibí)</label>
+      <input type="text" id="dni" placeholder="12345678A">
 
       <label for="categoria">Categoría</label>
       <input type="text" id="categoria" placeholder="Oficial, peón, electricista...">
@@ -163,7 +169,7 @@
     const categoriaFiltro = filtroCategoria.value;
 
     const empleados = todosLosEmpleados.filter(emp => {
-      const coincideNombre = !textoBusqueda || (emp.nombre || "").toLowerCase().includes(textoBusqueda);
+      const coincideNombre = !textoBusqueda || ((emp.nombre || "") + " " + (emp.nombreReal || "")).toLowerCase().includes(textoBusqueda);
       const coincideCategoria = !categoriaFiltro || emp.categoria === categoriaFiltro;
       return coincideNombre && coincideCategoria;
     });
@@ -185,6 +191,7 @@
           ${avatar(emp, 48)}
           <div style="min-width:0;">
             <p class="obra-name">${esc(emp.nombre || "Sin nombre")}</p>
+            ${emp.nombreReal && emp.nombreReal !== emp.nombre ? `<p class="obra-meta">Nombre real: ${esc(emp.nombreReal)}</p>` : ""}
             <p class="obra-meta">${esc(emp.categoria || "Sin categoría")} · ${emp.telefono ? `<a href="tel:${esc(emp.telefono)}" style="color:var(--accent-dark);">${esc(emp.telefono)}</a>` : "sin teléfono"}</p>
             <p class="obra-meta">Obra: ${esc(nombreObra(emp.obraAsignada))}</p>
             <p class="obra-meta">${carnet ? `<span class="chip ok">Carnet: ${esc(carnet)}</span>` : '<span class="chip">Sin carnet</span>'}</p>
@@ -219,7 +226,11 @@
           <input type="file" id="${idf}" accept="image/*" capture="user">
           <button class="link-btn edit-quitar-foto" style="${emp.foto ? "" : "display:none;"}">quitar</button>
         </div>
+        <label style="font-size:12px;margin-bottom:4px;">Nombre con el que le llaman</label>
         <input type="text" class="edit-nombre" value="${esc(emp.nombre || "")}" style="margin-bottom:8px;">
+        <label style="font-size:12px;margin-bottom:4px;">Nombre y apellidos reales (para documentos)</label>
+        <input type="text" class="edit-nombre-real" value="${esc(emp.nombreReal || "")}" placeholder="Igual que arriba si se deja vacío" style="margin-bottom:8px;">
+        <input type="text" class="edit-dni" value="${esc(emp.dni || "")}" placeholder="DNI / NIE (opcional)" style="margin-bottom:8px;">
         <input type="text" class="edit-categoria" value="${esc(emp.categoria || "")}" placeholder="Categoría" style="margin-bottom:8px;">
         <input type="text" class="edit-telefono" value="${esc(emp.telefono || "")}" placeholder="Teléfono" style="margin-bottom:8px;">
         <label class="check-row"><input type="checkbox" class="edit-carnet" ${emp.carnet ? "checked" : ""}> Tiene carnet de conducir</label>
@@ -258,6 +269,8 @@
       if (!nuevoNombre) return;
       await updateDoc(doc(db, "empleados", emp.id), {
         nombre: nuevoNombre,
+        nombreReal: item.querySelector(".edit-nombre-real").value.trim(),
+        dni: item.querySelector(".edit-dni").value.trim().toUpperCase(),
         categoria: item.querySelector(".edit-categoria").value.trim(),
         telefono: item.querySelector(".edit-telefono").value.trim(),
         obraAsignada: item.querySelector(".edit-obra").value,
@@ -277,6 +290,8 @@
 
     const datos = {
       nombre: document.getElementById("nombre").value.trim(),
+      nombreReal: document.getElementById("nombreReal").value.trim(),
+      dni: document.getElementById("dni").value.trim().toUpperCase(),
       categoria: document.getElementById("categoria").value.trim(),
       telefono: document.getElementById("telefono").value.trim(),
       obraAsignada: obraSelect.value,
