@@ -8,6 +8,7 @@
 <link rel="stylesheet" href="css/styles.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <style>
   .barra-dia { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
   .barra-dia input { margin: 0; width: auto; }
@@ -27,6 +28,14 @@
   .acciones { display: flex; gap: 14px; margin-top: 12px; flex-wrap: wrap; }
   .chip.vac { background: var(--accent-bg); color: var(--accent-dark); }
   .chip.mal { background: var(--danger-bg); color: var(--danger); }
+  .espacio-barra { height: 10px; border-radius: 5px; background: var(--border); overflow: hidden; margin: 8px 0 4px; }
+  .espacio-barra > span { display: block; height: 100%; background: var(--success); }
+  .espacio-barra.medio > span { background: var(--accent); }
+  .espacio-barra.alto > span { background: var(--danger); }
+  .limpiar-fila { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 12px; }
+  .limpiar-fila select { width: auto; margin: 0; }
+  .aviso-espacio { background: var(--accent-bg); color: var(--accent-dark); border-radius: 10px; padding: 12px 14px; font-size: 14px; margin-bottom: 14px; }
+  .aviso-espacio button { margin-left: 6px; }
   @media (max-width: 420px) { .partes { grid-template-columns: 1fr; } }
 </style>
 </head>
@@ -50,16 +59,38 @@
     </div>
   </div>
 
+  <div class="aviso-espacio" id="avisoEspacio" hidden></div>
   <p class="cuenta" id="cuenta"></p>
   <div class="partes" id="partes"><div class="loading">Cargando...</div></div>
+
+  <div class="card" id="limpiezaCard" style="margin-top:18px;" hidden>
+    <h1 style="font-size:16px;margin-bottom:4px;">🧹 Espacio de las fotos</h1>
+    <div id="espacio" style="font-size:14px;">Calculando...</div>
+    <div class="limpiar-fila">
+      <label for="limMeses" style="margin:0;">Borrar las fotos de los partes de hace más de</label>
+      <select id="limMeses" class="campo">
+        <option value="1">1 mes</option>
+        <option value="2">2 meses</option>
+        <option value="3" selected>3 meses</option>
+        <option value="6">6 meses</option>
+        <option value="12">1 año</option>
+      </select>
+    </div>
+    <p id="limResumen" style="font-size:14px;margin:10px 0;"></p>
+    <label class="check-row"><input type="checkbox" id="limCopia" checked> Descargar antes una copia de las fotos (ZIP) para guardarla en el ordenador o en Drive</label>
+    <button class="primary" id="limBtn" disabled style="margin-top:8px;">Borrar fotos antiguas</button>
+    <p id="limMsg" style="font-size:13px;margin:10px 0 0;"></p>
+    <p style="font-size:12px;color:var(--text-muted);margin:10px 0 0;">Solo se quitan las fotos: el texto de los partes, el avance y lo que se pasó a «Se necesita» e «Incidencias» se quedan. La base de datos gratuita de Firebase tiene 1 GB; las fotos de los partes van ocupando ese espacio.</p>
+  </div>
 </div>
 
 <script type="module">
   import { requireAuth } from "./js/auth.js";
   import { db } from "./js/firebase-config.js";
   import { collection, getDocs } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
-  import { fechaLocal, fechaBonita, esc, puedeGestionarFichajes, esFestivo, cargarConfig } from "./js/registro.js";
-  import { cargarParte, verPDFParte, verFotoGrande, CLIMAS } from "./js/parte.js";
+  import { collection as col, getDocs as gd, doc, deleteDoc, setDoc } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+  import { fechaLocal, fechaBonita, esc, puedeGestionarFichajes, esAdmin, esFestivo, cargarConfig } from "./js/registro.js";
+  import { cargarParte, verPDFParte, verFotoGrande } from "./js/parte.js";
 
   const $ = id => document.getElementById(id);
   $("backBtn").addEventListener("click", () => window.location.href = "dashboard.html");
@@ -101,19 +132,17 @@
           <p class="txt" style="color:var(--text-secondary);">${libre ? "Sin parte (día no laborable)." : "⏳ Sin parte este día."}</p>
           <div class="acciones"><button class="link-btn" data-abrir="${i}">abrir la obra</button></div>
         </div>`;
-      const pers = parte.personal || [];
       return `<div class="parte">
           <h2>${esc(o.nombre)}</h2>
-          <p class="meta">Parte de ${esc(parte.autorNombre || "—")} · ${esc((parte.actualizadoEn || "").slice(11, 16))}${parte.clima ? " · " + CLIMAS[parte.clima] : ""}</p>
-          <span class="chip ok">👷 ${pers.length} en obra</span>
+          <p class="meta">Parte de ${esc(parte.autorNombre || "—")} · ${esc((parte.actualizadoEn || "").slice(11, 16))}</p>
           ${lineas(parte.falta).length ? `<span class="chip vac">📦 ${lineas(parte.falta).length} por pedir</span>` : ""}
           ${lineas(parte.incidencias).length ? `<span class="chip mal">⚠️ ${lineas(parte.incidencias).length} incidencia(s)</span>` : ""}
-          ${pers.length ? `<p class="txt" style="font-size:13px;color:var(--text-secondary);margin-top:6px;">${pers.map(p => esc(p.nombre)).join(", ")}</p>` : ""}
           <p class="bloque-t">Trabajo hecho</p><p class="txt">${esc(parte.trabajo || "—")}</p>
           ${(parte.avance || []).length ? `<p class="bloque-t">Avance</p><ul>${parte.avance.map(a => `<li>${esc(a.nombre)}: ${a.antes} % → <b>${a.ahora} %</b></li>`).join("")}</ul>` : ""}
           ${lineas(parte.falta).length ? `<p class="bloque-t">Falta / pedir</p><ul>${lineas(parte.falta).map(l => `<li>${esc(l)}</li>`).join("")}</ul>` : ""}
           ${lineas(parte.incidencias).length ? `<p class="bloque-t">Incidencias</p><ul>${lineas(parte.incidencias).map(l => `<li>${esc(l)}</li>`).join("")}</ul>` : ""}
           ${parte.notas ? `<p class="bloque-t">Notas</p><p class="txt">${esc(parte.notas)}</p>` : ""}
+          ${parte.fotosBorradas ? `<p class="txt" style="font-size:12px;color:var(--text-muted);margin-top:8px;">📷 ${parte.fotosBorradas} foto(s) borrada(s) el ${fechaBonita(parte.fotosBorradasEn)} para liberar espacio.</p>` : ""}
           ${fotos.length ? `<div class="miniaturas">${fotos.map(f => `<img src="${f.data}" alt="Foto de ${esc(o.nombre)}" loading="lazy">`).join("")}</div>` : ""}
           <div class="acciones"><button class="link-btn" data-pdf="${i}">ver PDF</button><button class="link-btn" data-editar="${i}">abrir el parte</button></div>
         </div>`;
@@ -125,6 +154,109 @@
     document.querySelectorAll("[data-abrir]").forEach(b => b.addEventListener("click", () => abrirObra(orden[b.dataset.abrir].o, "parte")));
   }
 
+  // ---------- Limpieza de fotos antiguas (solo administración) ----------
+  const LIMITE_MB = 1024;
+  let partesConFotos = [];   // { o, id, fecha, numFotos, fotosKB }
+  const mb = kb => kb / 1024;
+  const txtMB = kb => mb(kb) < 10 ? mb(kb).toFixed(1).replace(".", ",") + " MB" : String(Math.round(mb(kb))).replace(/\B(?=(\d{3})+(?!\d))/g, ".") + " MB";
+  const fechaHaceMeses = n => { const d = new Date(); d.setMonth(d.getMonth() - n); return fechaLocal(d); };
+
+  async function calcularEspacio() {
+    const listas = await Promise.all(obras.map(o => gd(col(db, "obras", o.id, "partes"))
+      .then(s => s.docs.map(d => ({ o, id: d.id, ...d.data() }))).catch(() => [])));
+    partesConFotos = listas.flat().filter(p => (p.numFotos || 0) > 0);
+    const total = partesConFotos.reduce((s, p) => s + (p.fotosKB || 0), 0);
+    const n = partesConFotos.reduce((s, p) => s + p.numFotos, 0);
+    const pct = Math.min(100, mb(total) / LIMITE_MB * 100);
+    $("espacio").innerHTML = `${n} foto(s) guardadas · <b>${txtMB(total)}</b> de 1 GB (1.024 MB) (${pct < 1 ? pct.toFixed(1).replace(".", ",") : Math.round(pct)} %)
+      <div class="espacio-barra ${pct > 80 ? "alto" : pct > 60 ? "medio" : ""}"><span style="width:${Math.max(pct, 0.5)}%"></span></div>`;
+    // Aviso arriba si se está llenando o si hay fotos de hace más de 6 meses
+    const viejas = partesConFotos.filter(p => p.fecha < fechaHaceMeses(6));
+    if (pct > 60 || viejas.length) {
+      $("avisoEspacio").hidden = false;
+      $("avisoEspacio").innerHTML = (pct > 60 ? `Las fotos de los partes ocupan ya el ${Math.round(pct)} % del espacio gratuito.` : `Hay fotos de partes de hace más de 6 meses.`) +
+        ` <button class="link-btn" id="irLimpiar">Liberar espacio</button>`;
+      $("irLimpiar").addEventListener("click", () => $("limpiezaCard").scrollIntoView({ behavior: "smooth" }));
+    } else $("avisoEspacio").hidden = true;
+    resumenLimpieza();
+  }
+
+  function seleccionLimpieza() {
+    const corte = fechaHaceMeses(Number($("limMeses").value));
+    return partesConFotos.filter(p => p.fecha < corte);
+  }
+  function resumenLimpieza() {
+    const sel = seleccionLimpieza();
+    const n = sel.reduce((s, p) => s + p.numFotos, 0), kb = sel.reduce((s, p) => s + (p.fotosKB || 0), 0);
+    $("limResumen").innerHTML = n
+      ? `Se borrarían <b>${n} foto(s)</b> de ${sel.length} parte(s) anteriores al ${fechaBonita(fechaHaceMeses(Number($("limMeses").value)))}: se liberan unos <b>${txtMB(kb)}</b>.`
+      : "No hay fotos tan antiguas.";
+    $("limBtn").disabled = !n;
+    $("limBtn").textContent = n ? `Borrar ${n} foto(s) antiguas` : "Borrar fotos antiguas";
+  }
+  $("limMeses").addEventListener("change", resumenLimpieza);
+
+  $("limBtn").addEventListener("click", async () => {
+    const sel = seleccionLimpieza();
+    const n = sel.reduce((s, p) => s + p.numFotos, 0);
+    if (!n) return;
+    const btn = $("limBtn"), msg = $("limMsg");
+    btn.disabled = true;
+    try {
+      // 1. Se leen las fotos (y se prepara la copia si se ha pedido)
+      const copia = $("limCopia").checked;
+      if (copia && !window.JSZip) { msg.textContent = "No se ha podido cargar el compresor ZIP. Revisa la conexión y recarga."; btn.disabled = false; return; }
+      const zip = copia ? new JSZip() : null;
+      const porParte = [];
+      for (let i = 0; i < sel.length; i++) {
+        const p = sel[i];
+        msg.textContent = `Leyendo fotos ${i + 1} de ${sel.length} partes...`;
+        const s = await gd(col(db, "obras", p.o.id, "partes", p.id, "fotos"));
+        const fotos = s.docs.map(d => ({ id: d.id, ...d.data() }));
+        porParte.push({ p, fotos });
+        if (zip) fotos.forEach((f, k) => {
+          const carpeta = (p.o.nombre || "obra").replace(/[\\/:*?"<>|]/g, "-");
+          zip.file(`${carpeta}/${p.fecha}_${k + 1}.jpg`, String(f.data || "").split(",")[1] || "", { base64: true });
+        });
+      }
+      if (zip) {
+        msg.textContent = "Preparando la copia (ZIP)...";
+        const blob = await zip.generateAsync({ type: "blob", compression: "STORE" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url; a.download = `fotos_partes_hasta_${fechaHaceMeses(Number($("limMeses").value))}.zip`;
+        document.body.appendChild(a); a.click(); a.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 5000);
+        if (!confirm(`Se ha descargado la copia con ${n} foto(s).\n\nComprueba que está en Descargas y pulsa Aceptar para borrar las fotos de la app. Si no se ha descargado, pulsa Cancelar.`)) {
+          msg.textContent = "No se ha borrado nada."; btn.disabled = false; return;
+        }
+      } else if (!confirm(`¿Borrar ${n} foto(s) sin guardar copia? No se puede deshacer.`)) {
+        msg.textContent = "No se ha borrado nada."; btn.disabled = false; return;
+      }
+      // 2. Se borran y se apunta en cada parte
+      let hechas = 0, fallos = 0;
+      for (const { p, fotos } of porParte) {
+        let borradas = 0;
+        for (const f of fotos) {
+          try { await deleteDoc(doc(db, "obras", p.o.id, "partes", p.id, "fotos", f.id)); borradas++; hechas++; }
+          catch (e) { console.error(e); fallos++; }
+          if (hechas % 20 === 0) msg.textContent = `Borrando... ${hechas} de ${n}`;
+        }
+        await setDoc(doc(db, "obras", p.o.id, "partes", p.id), {
+          numFotos: fotos.length - borradas, fotosKB: borradas === fotos.length ? 0 : p.fotosKB,
+          fotosBorradas: (p.fotosBorradas || 0) + borradas, fotosBorradasEn: fechaLocal()
+        }, { merge: true });
+      }
+      msg.textContent = fallos ? `${hechas} foto(s) borradas; ${fallos} no se han podido borrar (vuelve a intentarlo).` : `✓ ${hechas} foto(s) borradas. Espacio liberado.`;
+      await calcularEspacio();
+      cargar();
+    } catch (e) {
+      console.error(e);
+      msg.textContent = "Ha habido un problema. Revisa la conexión e inténtalo otra vez.";
+      btn.disabled = false;
+    }
+  });
+
   requireAuth(async (user, perfil) => {
     if (!puedeGestionarFichajes(perfil)) { window.location.href = "dashboard.html"; return; }
     $("dia").value = fechaLocal();
@@ -133,6 +265,7 @@
     cfg = c;
     obras = oSnap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => (a.nombre || "").localeCompare(b.nombre || ""));
     cargar();
+    if (esAdmin(perfil)) { $("limpiezaCard").hidden = false; calcularEspacio(); }
   });
 </script>
 </body>

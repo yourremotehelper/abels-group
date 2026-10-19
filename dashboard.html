@@ -141,7 +141,7 @@
         const finde = [0, 6].includes(new Date().getDay());
         getDoc(doc(db, "obras", obra.id, "partes", hoy())).then(p => {
           const el = item.querySelector(".estado-parte");
-          if (p.exists()) el.innerHTML = '<span style="color:var(--success-dark);">📋 Parte de hoy enviado ✓</span>';
+          if (p.exists() && p.data().enviado) el.innerHTML = '<span style="color:var(--success-dark);">📋 Parte de hoy enviado ✓</span>';
           else if (!finde) el.innerHTML = '<span style="color:var(--accent-dark);font-weight:600;">📋 Falta el parte de hoy</span>';
         }).catch(() => {});
       }

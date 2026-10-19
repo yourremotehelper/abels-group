@@ -4,18 +4,13 @@ import { db, auth } from "./firebase-config.js";
 import {
   collection, getDocs, getDoc, addDoc, setDoc, deleteDoc, updateDoc, doc, serverTimestamp
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
-import { fechaLocal, horaLocal, fechaBonita, esc, avatar, puedeGestionarFichajes, nombreDocumento } from "./registro.js";
+import { fechaLocal, horaLocal, fechaBonita, esc, puedeGestionarFichajes } from "./registro.js";
 import { nuevoPDF, cabeceraPDF, parrafoPDF } from "./documentos.js";
 import { vistaPrevia } from "./vista-previa.js";
 
-export const CLIMAS = {
-  normal: "☀️ Normal",
-  lluvia: "🌧️ Lluvia",
-  viento: "💨 Viento",
-  calor: "🥵 Mucho calor",
-  frio: "🥶 Mucho frío"
-};
 export const MAX_FOTOS = 8;
+// Tamaño aproximado de una foto guardada (en KB)
+export const kbDe = data => Math.round(String(data || "").length * 3 / 4 / 1024);
 
 // ---------- Datos ----------
 export async function cargarParte(obraId, fecha) {
@@ -25,7 +20,9 @@ export async function cargarParte(obraId, fecha) {
   ]);
   const fotos = fotosSnap.docs.map(d => ({ id: d.id, ...d.data() }))
     .sort((a, b) => (a.orden || 0) - (b.orden || 0));
-  return { parte: snap.exists() ? snap.data() : null, fotos };
+  // Un parte cuenta como enviado cuando se ha guardado con el botón (antes puede tener solo fotos subidas)
+  const d = snap.exists() ? snap.data() : null;
+  return { parte: d && d.enviado ? d : null, info: d, fotos };
 }
 
 // Foto de obra: se reduce a 1000 px por el lado largo (unos 80-150 KB) para guardarla en la base de datos
@@ -58,7 +55,7 @@ export function pdfParte(parte, fotos, obraNombre) {
   pdf.text(obraNombre || "Obra", M, y);
   pdf.setFont("helvetica", "normal"); pdf.setFontSize(10);
   y += 6;
-  pdf.text(`${fechaBonita(parte.fecha)}${parte.clima ? "  ·  " + (CLIMAS[parte.clima] || "").replace(/^\S+\s/, "") : ""}  ·  Parte de ${parte.autorNombre || "—"}`, M, y);
+  pdf.text(`${fechaBonita(parte.fecha)}  ·  Parte de ${parte.autorNombre || "—"}`, M, y);
   y += 8;
 
   const seccion = (titulo, texto) => {
@@ -68,8 +65,6 @@ export function pdfParte(parte, fotos, obraNombre) {
     pdf.text(titulo, M, y);
     y = parrafoPDF(pdf, texto, M, y + 6, AN, 10) + 4;
   };
-  const personal = (parte.personal || []).map(p => p.nombre).join(", ");
-  seccion(`Personal en obra (${(parte.personal || []).length})`, personal || "—");
   seccion("Trabajo realizado", parte.trabajo || "—");
 
   if ((parte.avance || []).length) {
@@ -122,11 +117,6 @@ export function verPDFParte(parte, fotos, obraNombre) {
 
 // ---------- Pantalla del encargado ----------
 const CSS = `
-  .pt-chips { display: flex; flex-wrap: wrap; gap: 8px; }
-  .pt-chip { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px 6px 6px; border-radius: 22px; border: 1px solid var(--border); background: var(--surface); font: inherit; font-size: 14px; color: var(--text); cursor: pointer; }
-  .pt-chip.sin-foto { padding-left: 12px; }
-  .pt-chip.on { background: var(--accent-bg); border-color: var(--accent); color: var(--accent-dark); font-weight: 600; }
-  .pt-chip.on::after { content: "✓"; }
   .pt-sec { font-size: 15px; font-weight: 600; margin: 0 0 8px; display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
   .pt-sec small { font-size: 12px; font-weight: 400; color: var(--text-muted); }
   .pt-area { width: 100%; padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 15px; background: var(--bg); color: var(--text); resize: vertical; font-family: inherit; box-sizing: border-box; }
@@ -198,12 +188,10 @@ export async function renderParte(container, obra, perfil) {
   container.innerHTML = '<div class="loading">Cargando parte...</div>';
   const hoy = fechaLocal();
   let fecha = hoy;
-  let empleados = [], obraDoc = {}, parte = null, fotos = [], estado = null, sinGuardar = false;
+  let obraDoc = {}, parte = null, fotos = [], estado = null, sinGuardar = false;
 
   try {
-    const [eSnap, oSnap] = await Promise.all([getDocs(collection(db, "empleados")), getDoc(doc(db, "obras", obra.id))]);
-    empleados = eSnap.docs.map(d => ({ id: d.id, ...d.data() })).filter(e => e.activo !== false)
-      .sort((a, b) => (a.nombre || "").localeCompare(b.nombre || ""));
+    const oSnap = await getDoc(doc(db, "obras", obra.id));
     obraDoc = oSnap.exists() ? oSnap.data() : {};
   } catch (err) {
     console.error(err);
@@ -219,8 +207,6 @@ export async function renderParte(container, obra, perfil) {
     const fases = Array.isArray(g.fases) ? g.fases : [];
     // Estado de trabajo: lo guardado, o vacío (el avance parte del valor actual de la obra)
     estado = {
-      clima: parte ? parte.clima || "" : "",
-      personal: new Set(parte ? (parte.personal || []).map(p => p.id) : []),
       trabajo: parte ? parte.trabajo || "" : "",
       falta: parte ? parte.falta || "" : "",
       incidencias: parte ? parte.incidencias || "" : "",
@@ -234,9 +220,6 @@ export async function renderParte(container, obra, perfil) {
   }
 
   function pintar() {
-    const asignados = empleados.filter(e => e.obraAsignada === obra.id || estado.personal.has(e.id));
-    const otros = empleados.filter(e => !asignados.includes(e));
-    const chip = e => `<button type="button" class="pt-chip ${e.foto ? "" : "sin-foto"} ${estado.personal.has(e.id) ? "on" : ""}" data-emp="${e.id}">${e.foto ? avatar(e, 26) : ""}${esc(e.nombre)}</button>`;
     const hecho = !!parte;
     const fasesHtml = estado.fases.length
       ? estado.fases.map((f, i) => `
@@ -261,15 +244,6 @@ export async function renderParte(container, obra, perfil) {
           ? `✓ Parte enviado por ${esc(parte.autorNombre || "—")}${parte.actualizadoEn ? " · " + esc(parte.actualizadoEn.slice(11, 16)) : ""}. Puedes cambiarlo y volver a guardar.`
           : (fecha === hoy ? "Falta el parte de hoy." : "Este día no tiene parte.")}</div>
 
-        <p class="pt-sec">👷 Quién ha estado <small>${estado.personal.size} persona${estado.personal.size === 1 ? "" : "s"}</small></p>
-        <div class="pt-chips" id="ptPersonal">${asignados.map(chip).join("") || '<span style="font-size:13px;color:var(--text-muted);">Nadie asignado a esta obra.</span>'}</div>
-        ${otros.length ? `<details style="margin-top:8px;"><summary style="font-size:13px;color:var(--text-secondary);cursor:pointer;">Otros trabajadores (${otros.length})</summary><div class="pt-chips" style="margin-top:8px;">${otros.map(chip).join("")}</div></details>` : ""}
-
-        <p class="pt-sec" style="margin-top:18px;">🌤️ Tiempo</p>
-        <div class="pt-chips" id="ptClima">${Object.entries(CLIMAS).map(([k, v]) => `<button type="button" class="pt-chip sin-foto ${estado.clima === k ? "on" : ""}" data-clima="${k}">${v}</button>`).join("")}</div>
-      </div>
-
-      <div class="card">
         <p class="pt-sec">🔨 Qué se ha hecho hoy <button type="button" class="pt-dictar" id="ptDictar">🎤 Dictar</button></p>
         <textarea class="pt-area" id="ptTrabajo" rows="5" placeholder="Ej.: Alicatado del baño terminado. Empezamos la regata de la cocina.">${esc(estado.trabajo)}</textarea>
       </div>
@@ -299,6 +273,7 @@ export async function renderParte(container, obra, perfil) {
           ${fotos.map(f => `<div class="pt-foto"><img src="${f.data}" alt="Foto" data-id="${f.id}"><button type="button" data-borrar="${f.id}" aria-label="Quitar foto">✕</button></div>`).join("")}
           ${fotos.length < MAX_FOTOS ? `<label class="pt-anadir" for="ptFotoIn"><span>＋</span>Añadir fotos</label>` : ""}
         </div>
+        ${parte && parte.fotosBorradas ? `<p style="font-size:12px;color:var(--text-muted);margin:8px 0 0;">${parte.fotosBorradas} foto(s) de este parte se borraron el ${fechaBonita(parte.fotosBorradasEn)} para liberar espacio.</p>` : ""}
         <input type="file" id="ptFotoIn" accept="image/*" multiple hidden>
         <p id="ptFotoMsg" style="font-size:12px;color:var(--text-muted);margin:8px 0 0;"></p>
       </div>
@@ -321,18 +296,6 @@ export async function renderParte(container, obra, perfil) {
       fecha = e.target.value > hoy ? hoy : e.target.value;
       cargar();
     });
-    container.querySelectorAll("[data-emp]").forEach(b => b.addEventListener("click", () => {
-      const id = b.dataset.emp;
-      estado.personal.has(id) ? estado.personal.delete(id) : estado.personal.add(id);
-      b.classList.toggle("on", estado.personal.has(id));
-      container.querySelector(".pt-sec small").textContent = `${estado.personal.size} persona${estado.personal.size === 1 ? "" : "s"}`;
-      marcar();
-    }));
-    container.querySelectorAll("[data-clima]").forEach(b => b.addEventListener("click", () => {
-      estado.clima = estado.clima === b.dataset.clima ? "" : b.dataset.clima;
-      container.querySelectorAll("[data-clima]").forEach(x => x.classList.toggle("on", x.dataset.clima === estado.clima));
-      marcar();
-    }));
     [["ptTrabajo", "trabajo"], ["ptFalta", "falta"], ["ptIncid", "incidencias"], ["ptNotas", "notas"]].forEach(([id, k]) =>
       $(id).addEventListener("input", e => { estado[k] = e.target.value; marcar(); }));
     $("ptUrgente").addEventListener("change", e => { estado.urgente = e.target.checked; });
@@ -361,7 +324,7 @@ export async function renderParte(container, obra, perfil) {
         msg.textContent = `Guardando foto ${i + 1} de ${files.length}...`;
         try {
           const f = await comprimirFotoObra(files[i]);
-          const datos = { ...f, orden: ++orden, creadoEn: `${fechaLocal()} ${horaLocal()}`, autorNombre: perfil.nombre || "" };
+          const datos = { ...f, kb: kbDe(f.data), orden: ++orden, creadoEn: `${fechaLocal()} ${horaLocal()}`, autorNombre: perfil.nombre || "" };
           const ref = await addDoc(collection(db, "obras", obra.id, "partes", fecha, "fotos"), datos);
           fotos.push({ id: ref.id, ...datos });
         } catch (err) {
@@ -370,6 +333,7 @@ export async function renderParte(container, obra, perfil) {
           await new Promise(r => setTimeout(r, 1500));
         }
       }
+      await apuntarFotos();
       guardarTextosEnPantalla();
       pintar();
     });
@@ -378,6 +342,7 @@ export async function renderParte(container, obra, perfil) {
       try {
         await deleteDoc(doc(db, "obras", obra.id, "partes", fecha, "fotos", b.dataset.borrar));
         fotos = fotos.filter(f => f.id !== b.dataset.borrar);
+        await apuntarFotos();
         guardarTextosEnPantalla();
         pintar();
       } catch (err) { console.error(err); alert("No se ha podido quitar. Inténtalo otra vez."); }
@@ -387,6 +352,14 @@ export async function renderParte(container, obra, perfil) {
     $("ptGuardar").addEventListener("click", guardar);
     if ($("ptPdf")) $("ptPdf").addEventListener("click", () => verPDFParte(parte, fotos, obra.nombre));
     if ($("ptBorrar")) $("ptBorrar").addEventListener("click", borrarParte);
+  }
+
+  // Lleva la cuenta de fotos y espacio en el parte (para poder limpiar fotos antiguas sin descargarlas todas)
+  const resumenFotos = () => ({ numFotos: fotos.length, fotosKB: fotos.reduce((s, f) => s + (f.kb || kbDe(f.data)), 0) });
+  async function apuntarFotos() {
+    try {
+      await setDoc(doc(db, "obras", obra.id, "partes", fecha), { fecha, obraId: obra.id, obraNombre: obra.nombre || "", ...resumenFotos() }, { merge: true });
+    } catch (e) { console.error(e); }
   }
 
   // Mantiene lo escrito al repintar (p. ej. tras añadir fotos)
@@ -452,16 +425,14 @@ export async function renderParte(container, obra, perfil) {
         obraDoc.gestion = g;
       }
 
-      const personal = empleados.filter(e => estado.personal.has(e.id)).map(e => ({ id: e.id, nombre: e.nombre || "", nombreReal: nombreDocumento(e) }));
-      // Conserva quien ya estaba aunque ya no esté en el directorio
-      (parte && parte.personal || []).forEach(p => { if (estado.personal.has(p.id) && !personal.find(x => x.id === p.id)) personal.push(p); });
       const datos = {
+        enviado: true,
         fecha, obraId: obra.id, obraNombre: obra.nombre || "",
-        clima: estado.clima, personal, trabajo: estado.trabajo.trim(),
+        trabajo: estado.trabajo.trim(),
         falta: estado.falta.trim(), incidencias: estado.incidencias.trim(), notas: estado.notas.trim(),
         faltaCreadas: [...yaFalta], incidenciasCreadas: [...yaInc],
         avance,
-        numFotos: fotos.length,
+        ...resumenFotos(),
         actualizadoEn: ahora, actualizadoPorNombre: perfil.nombre || ""
       };
       if (!parte) Object.assign(datos, {
