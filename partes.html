@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Abel's | Partes diarios</title>
+<link rel="manifest" href="manifest.json">
+<link rel="stylesheet" href="css/styles.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+<style>
+  .barra-dia { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .barra-dia input { margin: 0; width: auto; }
+  .barra-dia .icon-btn { flex-shrink: 0; }
+  .cuenta { font-size: 14px; color: var(--text-secondary); margin: 0 0 12px; }
+  .cuenta b { color: var(--text); }
+  .partes { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 14px; align-items: start; }
+  .parte { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 16px; }
+  .parte.falta { border-color: var(--accent); background: var(--accent-bg); }
+  .parte h2 { font-size: 16px; margin: 0; }
+  .parte .meta { font-size: 12px; color: var(--text-muted); margin: 2px 0 10px; }
+  .parte .bloque-t { font-size: 12px; font-weight: 600; color: var(--text-secondary); margin: 10px 0 2px; text-transform: uppercase; letter-spacing: .03em; }
+  .parte p.txt { font-size: 14px; margin: 0; white-space: pre-line; }
+  .parte ul { margin: 0; padding-left: 18px; font-size: 14px; }
+  .miniaturas { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-top: 10px; }
+  .miniaturas img { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 6px; cursor: zoom-in; display: block; }
+  .acciones { display: flex; gap: 14px; margin-top: 12px; flex-wrap: wrap; }
+  .chip.vac { background: var(--accent-bg); color: var(--accent-dark); }
+  .chip.mal { background: var(--danger-bg); color: var(--danger); }
+  @media (max-width: 420px) { .partes { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<div class="screen ancha">
+  <div class="topbar">
+    <button class="icon-btn" id="backBtn" title="Volver" aria-label="Volver">&#8592;</button>
+    <div class="topbar-info">
+      <p class="topbar-obra">Lo que se ha hecho en cada obra</p>
+      <p class="topbar-title">📋 Partes diarios</p>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="barra-dia">
+      <button class="icon-btn" id="antes" title="Día anterior" aria-label="Día anterior">‹</button>
+      <input type="date" id="dia" aria-label="Día">
+      <button class="icon-btn" id="despues" title="Día siguiente" aria-label="Día siguiente">›</button>
+      <button class="link-btn" id="hoyBtn">hoy</button>
+      <label class="check-row" style="margin:0 0 0 auto;"><input type="checkbox" id="verTerminadas"> Ver también obras terminadas</label>
+    </div>
+  </div>
+
+  <p class="cuenta" id="cuenta"></p>
+  <div class="partes" id="partes"><div class="loading">Cargando...</div></div>
+</div>
+
+<script type="module">
+  import { requireAuth } from "./js/auth.js";
+  import { db } from "./js/firebase-config.js";
+  import { collection, getDocs } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+  import { fechaLocal, fechaBonita, esc, puedeGestionarFichajes, esFestivo, cargarConfig } from "./js/registro.js";
+  import { cargarParte, verPDFParte, verFotoGrande, CLIMAS } from "./js/parte.js";
+
+  const $ = id => document.getElementById(id);
+  $("backBtn").addEventListener("click", () => window.location.href = "dashboard.html");
+
+  let obras = [], cfg = null;
+  const DIAS = ["domingo", "lunes", "martes", "miércoles", "jueves", "viernes", "sábado"];
+  const moverDia = n => { const d = new Date($("dia").value + "T12:00:00"); d.setDate(d.getDate() + n); $("dia").value = fechaLocal(d); cargar(); };
+  $("antes").addEventListener("click", () => moverDia(-1));
+  $("despues").addEventListener("click", () => moverDia(1));
+  $("hoyBtn").addEventListener("click", () => { $("dia").value = fechaLocal(); cargar(); });
+  $("dia").addEventListener("change", cargar);
+  $("verTerminadas").addEventListener("change", cargar);
+
+  const lineas = t => String(t || "").split("\n").map(s => s.trim()).filter(Boolean);
+  const abrirObra = (o, tab) => {
+    sessionStorage.setItem("obraActual", JSON.stringify({ id: o.id, nombre: o.nombre }));
+    window.location.href = "obra.html?tab=" + tab;
+  };
+
+  async function cargar() {
+    const dia = $("dia").value;
+    $("despues").disabled = dia >= fechaLocal();
+    $("partes").innerHTML = '<div class="loading">Cargando partes...</div>';
+    const ds = new Date(dia + "T12:00:00").getDay();
+    const libre = ds === 0 || ds === 6 || esFestivo(dia, cfg);
+    const lista = obras.filter(o => $("verTerminadas").checked || !["terminada", "cancelada"].includes((o.gestion || {}).estado));
+    const datos = await Promise.all(lista.map(o => cargarParte(o.id, dia).then(r => ({ o, ...r })).catch(() => ({ o, parte: null, fotos: [] }))));
+    const con = datos.filter(d => d.parte), sin = datos.filter(d => !d.parte);
+    $("cuenta").innerHTML = `${DIAS[ds].charAt(0).toUpperCase() + DIAS[ds].slice(1)} ${fechaBonita(dia)}${libre ? " (no laborable)" : ""}: <b>${con.length} de ${datos.length}</b> obras con parte` +
+      (sin.length && !libre ? ` · falta en ${sin.map(d => esc(d.o.nombre)).join(", ")}` : "");
+    if (!datos.length) { $("partes").innerHTML = '<div class="placeholder">No hay obras activas.</div>'; return; }
+
+    // Primero las que tienen parte; las que faltan, al final (en días libres no se marcan como pendientes)
+    $("partes").innerHTML = [...con, ...sin].map((d, i) => {
+      const { o, parte, fotos } = d;
+      if (!parte) return `<div class="parte ${libre ? "" : "falta"}">
+          <h2>${esc(o.nombre)}</h2>
+          <p class="meta">${esc(o.direccion || "")}</p>
+          <p class="txt" style="color:var(--text-secondary);">${libre ? "Sin parte (día no laborable)." : "⏳ Sin parte este día."}</p>
+          <div class="acciones"><button class="link-btn" data-abrir="${i}">abrir la obra</button></div>
+        </div>`;
+      const pers = parte.personal || [];
+      return `<div class="parte">
+          <h2>${esc(o.nombre)}</h2>
+          <p class="meta">Parte de ${esc(parte.autorNombre || "—")} · ${esc((parte.actualizadoEn || "").slice(11, 16))}${parte.clima ? " · " + CLIMAS[parte.clima] : ""}</p>
+          <span class="chip ok">👷 ${pers.length} en obra</span>
+          ${lineas(parte.falta).length ? `<span class="chip vac">📦 ${lineas(parte.falta).length} por pedir</span>` : ""}
+          ${lineas(parte.incidencias).length ? `<span class="chip mal">⚠️ ${lineas(parte.incidencias).length} incidencia(s)</span>` : ""}
+          ${pers.length ? `<p class="txt" style="font-size:13px;color:var(--text-secondary);margin-top:6px;">${pers.map(p => esc(p.nombre)).join(", ")}</p>` : ""}
+          <p class="bloque-t">Trabajo hecho</p><p class="txt">${esc(parte.trabajo || "—")}</p>
+          ${(parte.avance || []).length ? `<p class="bloque-t">Avance</p><ul>${parte.avance.map(a => `<li>${esc(a.nombre)}: ${a.antes} % → <b>${a.ahora} %</b></li>`).join("")}</ul>` : ""}
+          ${lineas(parte.falta).length ? `<p class="bloque-t">Falta / pedir</p><ul>${lineas(parte.falta).map(l => `<li>${esc(l)}</li>`).join("")}</ul>` : ""}
+          ${lineas(parte.incidencias).length ? `<p class="bloque-t">Incidencias</p><ul>${lineas(parte.incidencias).map(l => `<li>${esc(l)}</li>`).join("")}</ul>` : ""}
+          ${parte.notas ? `<p class="bloque-t">Notas</p><p class="txt">${esc(parte.notas)}</p>` : ""}
+          ${fotos.length ? `<div class="miniaturas">${fotos.map(f => `<img src="${f.data}" alt="Foto de ${esc(o.nombre)}" loading="lazy">`).join("")}</div>` : ""}
+          <div class="acciones"><button class="link-btn" data-pdf="${i}">ver PDF</button><button class="link-btn" data-editar="${i}">abrir el parte</button></div>
+        </div>`;
+    }).join("");
+    const orden = [...con, ...sin];
+    document.querySelectorAll(".miniaturas img").forEach(img => img.addEventListener("click", () => verFotoGrande(img.src)));
+    document.querySelectorAll("[data-pdf]").forEach(b => b.addEventListener("click", () => { const d = orden[b.dataset.pdf]; verPDFParte(d.parte, d.fotos, d.o.nombre); }));
+    document.querySelectorAll("[data-editar]").forEach(b => b.addEventListener("click", () => abrirObra(orden[b.dataset.editar].o, "parte")));
+    document.querySelectorAll("[data-abrir]").forEach(b => b.addEventListener("click", () => abrirObra(orden[b.dataset.abrir].o, "parte")));
+  }
+
+  requireAuth(async (user, perfil) => {
+    if (!puedeGestionarFichajes(perfil)) { window.location.href = "dashboard.html"; return; }
+    $("dia").value = fechaLocal();
+    $("dia").max = fechaLocal();
+    const [oSnap, c] = await Promise.all([getDocs(collection(db, "obras")), cargarConfig()]);
+    cfg = c;
+    obras = oSnap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => (a.nombre || "").localeCompare(b.nombre || ""));
+    cargar();
+  });
+</script>
+</body>
+</html>

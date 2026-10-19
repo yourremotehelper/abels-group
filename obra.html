@@ -6,6 +6,8 @@
 <title>Abel's | Obra</title>
 <link rel="manifest" href="manifest.json">
 <link rel="stylesheet" href="css/styles.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
 </head>
 <body>
 <div class="screen">
@@ -19,6 +21,7 @@
   </div>
 
   <div class="tabs">
+    <div class="tab" data-tab="parte">📋 Parte del día</div>
     <div class="tab active" data-tab="resumen">Resumen</div>
     <div class="tab" data-tab="fichaje">Asistencia</div>
     <div class="tab" data-tab="cierre">Cierre del día</div>
@@ -45,6 +48,7 @@
   import { renderResumen } from "./js/resumen.js";
   import { renderGastos } from "./js/gastos.js";
   import { renderIncidencias } from "./js/incidencias.js";
+  import { renderParte } from "./js/parte.js";
 
   const obraTitle = document.getElementById("obraTitle");
   const tabContent = document.getElementById("tabContent");
@@ -72,7 +76,10 @@
     // La asistencia se apunta a día vencido desde "Registro de asistencia"; aquí ya no se registra en el momento
     document.querySelectorAll('.tab[data-tab="fichaje"], .tab[data-tab="cierre"]').forEach(t => t.remove());
     obraTitle.textContent = obraActual.nombre || "Obra";
-    renderResumen(tabContent, obraActual.id);
+    // El encargado entra directo al parte del día; la oficina, al resumen
+    const inicial = new URLSearchParams(location.search).get("tab") || (puedeGestionarFichajes(perfil) ? "resumen" : "parte");
+    const t = document.querySelector(`.tab[data-tab="${inicial}"]`);
+    if (t) t.click(); else renderResumen(tabContent, obraActual.id);
   });
 
   const placeholders = {};
@@ -82,7 +89,9 @@
       tabs.forEach(t => t.classList.remove("active"));
       tab.classList.add("active");
       const key = tab.dataset.tab;
-      if (key === "fichaje") {
+      if (key === "parte") {
+        renderParte(tabContent, obraActual, perfilActual);
+      } else if (key === "fichaje") {
         renderFichaje(tabContent, obraActual.id, perfilActual);
       } else if (key === "cierre") {
         renderCierre(tabContent, obraActual.id, perfilActual);

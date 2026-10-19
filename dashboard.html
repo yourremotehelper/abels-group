@@ -34,7 +34,7 @@
   import { esAdmin, puedeGestionarFichajes, veTodasLasObras, fechaLocal } from "./js/registro.js";
   import { db } from "./js/firebase-config.js";
   import {
-    collection, getDocs, query, where, documentId
+    collection, getDocs, getDoc, doc, query, where, documentId
   } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
   const obrasCard = document.getElementById("obrasCard");
@@ -85,6 +85,7 @@
     }
     if (puedeGestionarFichajes(perfil)) {
       bloque("📝", "Registro de asistencia", "Apuntar horas, horas extra y faltas", "registro.html", !esAdmin(perfil));
+      bloque("📋", "Partes diarios", "Lo que se ha hecho hoy en cada obra, con fotos", "partes.html");
       bloque("👥", "RRHH", esAdmin(perfil) ? "Directorio, ausencias y vacaciones, horas extra, pagos" : "Directorio, ausencias y vacaciones, horas extra", "ausencias.html");
       bloque("⚙️", "Ajustes", "Jornada, festivos" + (esAdmin(perfil) ? ", obras y usuarios" : ""), "ajustes.html");
     } else {
@@ -123,6 +124,7 @@
             <div>
               <p class="obra-name">${obra.nombre || "Sin nombre"}</p>
               <p class="obra-meta">${obra.direccion || ""}</p>
+              <p class="obra-meta estado-parte" style="margin-top:2px;"></p>
             </div>
           </div>
           <span style="color:var(--text-muted);">&#8250;</span>
@@ -135,6 +137,13 @@
         calcularEstado(obra.id).then(color => {
           item.querySelector(".punto-estado").style.background = color;
         });
+        // Parte de hoy: enviado o pendiente (fines de semana no se reclama)
+        const finde = [0, 6].includes(new Date().getDay());
+        getDoc(doc(db, "obras", obra.id, "partes", hoy())).then(p => {
+          const el = item.querySelector(".estado-parte");
+          if (p.exists()) el.innerHTML = '<span style="color:var(--success-dark);">📋 Parte de hoy enviado ✓</span>';
+          else if (!finde) el.innerHTML = '<span style="color:var(--accent-dark);font-weight:600;">📋 Falta el parte de hoy</span>';
+        }).catch(() => {});
       }
     } catch (err) {
       obrasCard.innerHTML = '<div class="placeholder">Error al cargar las obras.</div>';
