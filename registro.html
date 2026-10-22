@@ -14,7 +14,7 @@
   .fila-campos { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
   .fila-campos select { grid-column: 1 / -1; }
   .fila-campos input, .fila-campos select { margin-bottom: 0; height: 40px; font-size: 14px; }
-  .fila-acciones { display: flex; gap: 14px; margin-top: 8px; }
+  .fila-acciones { display: flex; gap: 6px 14px; margin-top: 8px; flex-wrap: wrap; }
   .barra-guardar { position: sticky; bottom: 0; padding: 10px 0 14px; background: var(--bg); }
   .hist-item { font-size: 13px; padding: 8px 0; border-bottom: 1px solid var(--border); color: var(--text-secondary); }
   .hist-item:last-child { border-bottom: none; }
@@ -25,6 +25,13 @@
   .faltan-box { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; }
   .faltan-num { font-size: 22px; font-weight: 700; color: var(--danger); font-variant-numeric: tabular-nums; }
   .faltan-num.ok { color: var(--success); }
+  .comp-box { margin-top: 8px; padding: 10px 12px; border-radius: 8px; background: var(--bg); border: 1px dashed var(--border); font-size: 13px; }
+  .comp-form { display: grid; grid-template-columns: 90px 1fr auto; gap: 8px; margin-top: 6px; }
+  .comp-form input, .comp-form button { margin: 0; height: 38px; font-size: 14px; }
+  .comp-form button { width: auto; padding: 0 14px; }
+  .comp-item { display: flex; justify-content: space-between; gap: 8px; align-items: center; padding: 3px 0; }
+  .chip.comp { background: #E8EEF8; color: #2F5597; }
+  @media (max-width: 420px) { .comp-form { grid-template-columns: 80px 1fr; } .comp-form button { grid-column: 1 / -1; } }
   .sel-motivo { margin: 8px 0 0 !important; height: 38px !important; font-size: 13px !important; border-color: var(--danger) !important; }
 </style>
 </head>
@@ -83,6 +90,9 @@
 
   <input type="text" id="buscador" placeholder="Buscar trabajador..." autocomplete="off">
 
+  <datalist id="motivosComp">
+    <option value="Gestión personal"><option value="Médico"><option value="Salió antes"><option value="Llegó más tarde"><option value="Asunto familiar">
+  </datalist>
   <div class="card" id="lista">
     <div class="loading">Cargando...</div>
   </div>
@@ -131,6 +141,8 @@
   let tarjetas = [];
   let cfg = null;
   let ausencias = {};
+  let compensaciones = {};   // empleadoId -> [{ id, horas, motivo }] del día
+  const abiertosComp = new Set();
   let filas = [];   // { empId, nombre, existente: {obraId, docId, ...} | null, obraId, entrada, salida }
 
   document.getElementById("backBtn").addEventListener("click", () => {
@@ -191,6 +203,11 @@
     tarjetas = tarSnap.docs.map(d => ({ id: d.id, ...d.data() }))
       .sort((a, b) => (a.nombre || "").localeCompare(b.nombre || ""));
     ausencias = aus;
+    compensaciones = {};
+    try {
+      const cs = await getDocs(query(collection(db, "compensaciones"), where("fecha", "==", fecha)));
+      cs.forEach(d => { const c = { id: d.id, ...d.data() }; (compensaciones[c.empleadoId] ||= []).push(c); });
+    } catch (err) { console.error(err); }
     const fo = document.getElementById("filtroObra"), foSel = fo.value;
     fo.innerHTML = '<option value="">Todas las obras</option>' + obrasSnap.docs
       .map(d => ({ id: d.id, ...d.data() })).sort((x, y) => (x.nombre || "").localeCompare(y.nombre || ""))
@@ -332,6 +349,51 @@
     }
   }
 
+  // ---------- Horas compensadas: se restan de sus horas extra (p. ej. 2 h para una gestión) ----------
+  const totalComp = f => (compensaciones[f.empId] || []).reduce((s, c) => s + (Number(c.horas) || 0), 0);
+  function etiquetaComp(f) {
+    const t = totalComp(f);
+    return t ? `<span class="chip comp">−${textoHoras(t)} compensadas</span>` : "";
+  }
+  function cajaComp(f) {
+    const lista = compensaciones[f.empId] || [];
+    return `<div class="comp-box">
+      <b>Horas que se restan de sus horas extra este día</b>
+      ${lista.map(c => `<div class="comp-item"><span>−${textoHoras(Number(c.horas) || 0)} · ${esc(c.motivo || "")}${c.descontadoEn ? " · ya restadas en un recibí" : ""}</span>
+        ${c.descontadoEn ? "" : `<button class="link-btn b-comp-quitar" data-id="${c.id}" style="color:var(--danger);">quitar</button>`}</div>`).join("")}
+      <div class="comp-form">
+        <input type="number" class="comp-h" min="0.5" max="12" step="0.5" inputmode="decimal" placeholder="Horas" aria-label="Horas a compensar">
+        <input type="text" class="comp-m" list="motivosComp" placeholder="Motivo (ej.: gestión personal)" aria-label="Motivo">
+        <button class="secondary comp-ok">Restar</button>
+      </div>
+    </div>`;
+  }
+  async function guardarComp(f, div) {
+    const horas = Number(div.querySelector(".comp-h").value);
+    const motivo = div.querySelector(".comp-m").value.trim();
+    if (!(horas > 0)) { alert("Pon cuántas horas se compensan."); return; }
+    if (!motivo) { alert("Escribe el motivo (ej.: gestión personal, médico...)."); return; }
+    const datos = {
+      empleadoId: f.empId, empleadoNombre: f.nombre, fecha: fechaInput.value, horas, motivo,
+      creadoPorUid: auth.currentUser ? auth.currentUser.uid : "", creadoPorNombre: perfil.nombre || "",
+      creadoEn: `${fechaLocal()} ${horaLocal()}`
+    };
+    try {
+      const ref = await addDoc(collection(db, "compensaciones"), { ...datos, registradoEn: serverTimestamp() });
+      (compensaciones[f.empId] ||= []).push({ id: ref.id, ...datos });
+      pintar();
+    } catch (err) { console.error(err); alert("No se ha podido guardar. Inténtalo otra vez."); }
+  }
+  async function quitarComp(f, id) {
+    const c = (compensaciones[f.empId] || []).find(x => x.id === id);
+    if (!c || !confirm(`¿Quitar las ${textoHoras(Number(c.horas) || 0)} compensadas de ${f.nombre} (${c.motivo})?`)) return;
+    try {
+      await deleteDoc(doc(db, "compensaciones", id));
+      compensaciones[f.empId] = compensaciones[f.empId].filter(x => x.id !== id);
+      pintar();
+    } catch (err) { console.error(err); alert("No se ha podido quitar. Inténtalo otra vez."); }
+  }
+
   function etiquetaEstado(f) {
     const e = f.existente;
     const a = ausencias[f.empId];
@@ -376,7 +438,7 @@
       <div class="fila ${cambiada(f) ? "cambiada" : ""} ${esFalta(f) ? "falta" : ""}" data-emp="${f.empId}">
         <div class="fila-cab">
           <div style="display:flex;align-items:center;gap:10px;min-width:0;">${avatar(f.emp, 36)}<p class="obra-name">${esc(f.nombre)}</p></div>
-          ${etiquetaEstado(f)}
+          <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;justify-content:flex-end;">${etiquetaComp(f)}${etiquetaEstado(f)}</div>
         </div>
         <div class="fila-campos">
           <select class="campo c-obra">${opcionesObras(f.obraId)}</select>
@@ -389,9 +451,11 @@
         </div>
         <div class="fila-acciones">
           <button class="link-btn b-jornada">jornada normal</button>
+          <button class="link-btn b-comp">− compensar horas extra</button>
           ${cambiada(f) ? '<button class="link-btn b-deshacer">deshacer cambios</button>' : ""}
           ${f.existente ? '<button class="link-btn b-borrar" style="color:var(--danger);">borrar fichaje</button>' : ""}
         </div>
+        ${abiertosComp.has(f.empId) ? cajaComp(f) : ""}
         ${esFalta(f) ? `<select class="campo sel-motivo" aria-label="Motivo de la ausencia">${opcionesMotivo()}</select>` : ""}
       </div>
     `).join("");
@@ -442,6 +506,15 @@
         f.extraTocada = !!(e && e.horasExtra);
         pintar();
       });
+      div.querySelector(".b-comp").addEventListener("click", () => {
+        abiertosComp.has(f.empId) ? abiertosComp.delete(f.empId) : abiertosComp.add(f.empId);
+        pintar();
+        const caja = lista.querySelector(`.fila[data-emp="${f.empId}"] .comp-h`);
+        if (caja) caja.focus();
+      });
+      const compOk = div.querySelector(".comp-ok");
+      if (compOk) compOk.addEventListener("click", () => guardarComp(f, div));
+      div.querySelectorAll(".b-comp-quitar").forEach(b => b.addEventListener("click", () => quitarComp(f, b.dataset.id)));
       const bQuitarAus = div.querySelector(".b-quitar-aus");
       if (bQuitarAus) bQuitarAus.addEventListener("click", () => quitarAusencia(f));
       const selMotivo = div.querySelector(".sel-motivo");
@@ -573,18 +646,20 @@
     const horas = filas.filter(f => f.existente);
     const ausDia = Object.entries(ausencias).filter(([, a]) => a.id && a.desde === fecha && (a.hasta || a.desde) === fecha);
     const ausLargas = Object.values(ausencias).filter(a => a.desde !== fecha || (a.hasta || a.desde) !== fecha);
+    const comps = Object.values(compensaciones).flat().filter(c => !c.descontadoEn);
     let hist = [];
     try {
       hist = (await getDocs(query(collection(db, "historialFichajes"), where("fecha", "==", fecha)))).docs;
     } catch (err) { console.error(err); }
-    if (!horas.length && !ausDia.length && !hist.length) { mostrar(okMsg, `No hay nada apuntado el ${fechaBonita(fecha)}.`); return; }
+    if (!horas.length && !ausDia.length && !hist.length && !comps.length) { mostrar(okMsg, `No hay nada apuntado el ${fechaBonita(fecha)}.`); return; }
     if (!confirm(`¿Borrar todo lo apuntado el ${fechaBonita(fecha)}?\n\n` +
-      `• Horas de ${horas.length} trabajador(es)\n• ${ausDia.length} ausencia(s) de ese día\n• ${hist.length} cambio(s) del historial` +
+      `• Horas de ${horas.length} trabajador(es)\n• ${ausDia.length} ausencia(s) de ese día\n• ${comps.length} compensación(es) de horas\n• ${hist.length} cambio(s) del historial` +
       (ausLargas.length ? `\n\nLas bajas o vacaciones de varios días no se tocan (se quitan desde Ausencias o Vacaciones).` : "") +
       `\n\nNo se puede deshacer.`)) return;
     let fallos = 0;
     for (const f of horas) { try { await deleteDoc(doc(db, "obras", f.existente.obraId, "fichajes", f.existente.docId)); } catch (e) { console.error(e); fallos++; } }
     for (const [, a] of ausDia) { try { await deleteDoc(doc(db, "ausencias", a.id)); } catch (e) { console.error(e); fallos++; } }
+    for (const c of comps) { try { await deleteDoc(doc(db, "compensaciones", c.id)); } catch (e) { console.error(e); fallos++; } }
     for (const h of hist) { try { await deleteDoc(h.ref); } catch (e) { console.error(e); fallos++; } }
     await cargar();
     if (fallos) mostrar(errorMsg, `${fallos} cosa(s) no se han podido borrar. ¿Están publicadas las reglas nuevas de Firebase?`);

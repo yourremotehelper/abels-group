@@ -39,7 +39,7 @@
   <p id="resumen" style="font-size:13px;color:var(--text-secondary);margin:0 0 10px;"></p>
 
   <div class="card" id="lista"><div class="loading">Calculando...</div></div>
-  <p style="font-size:12px;color:var(--text-muted);text-align:center;">Toca un trabajador para ver los días. El máximo general se cambia en Ajustes → Jornada; el de cada trabajador, en su ficha del Directorio.</p>
+  <p style="font-size:12px;color:var(--text-muted);text-align:center;">Toca un trabajador para ver los días. El máximo general se cambia en Ajustes → Jornada; el de cada trabajador, en su ficha del Directorio. Las horas compensadas ya están restadas del total.</p>
 </div>
 
 <script type="module">
@@ -70,6 +70,15 @@
       if (h <= 0) return;
       (porEmp[f.empleadoId] ||= { nombre: f.empleadoNombre, dias: [] }).dias.push({ fecha: f.fecha, h, obra: obra.nombre });
     }));
+    // Horas compensadas (gestiones, médico...): se restan del total del año
+    try {
+      const cs = await getDocs(query(collection(db, "compensaciones"), where("fecha", ">=", `${anio}-01-01`), where("fecha", "<=", `${anio}-12-31`)));
+      cs.forEach(d => {
+        const c = d.data(), h = Number(c.horas) || 0;
+        if (h <= 0) return;
+        (porEmp[c.empleadoId] ||= { nombre: c.empleadoNombre, dias: [] }).dias.push({ fecha: c.fecha, h: -h, obra: "", motivo: c.motivo || "", comp: true });
+      });
+    } catch (err) { console.error(err); }
 
     const topeGen = Number(cfg.topeAnualExtras) || 0;
     const avisoGen = Number(cfg.avisoExtras) || 0;
@@ -84,7 +93,8 @@
     const filas = Object.entries(porEmp).map(([id, v]) => {
       const total = v.dias.reduce((s, x) => s + x.h, 0);
       const emp = empleados.find(e => e.id === id) || { nombre: v.nombre };
-      return { id, emp, nombre: emp.nombre || v.nombre, total, ...limites(emp), dias: v.dias.sort((a, b) => a.fecha.localeCompare(b.fecha)) };
+      const comp = -v.dias.filter(d => d.comp).reduce((s, d) => s + d.h, 0);
+      return { id, emp, nombre: emp.nombre || v.nombre, total, comp, ...limites(emp), dias: v.dias.sort((a, b) => a.fecha.localeCompare(b.fecha)) };
     }).sort((a, b) => b.total - a.total);
 
     const sobre = filas.filter(f => f.tope && f.total > f.tope).length;
@@ -110,6 +120,7 @@
       const dias = f.dias.map(d => {
         acum += d.h;
         const encima = tope && acum > tope;
+        if (d.comp) return `<span style="color:#2F5597;">${fechaBonita(d.fecha)} · −${textoHoras(-d.h)} compensadas · ${esc(d.motivo)}</span>`;
         return `<span>${fechaBonita(d.fecha)} · ${textoHoras(d.h)} · ${esc(d.obra)}${encima ?  ' <b style="color:var(--danger);">· por encima del máximo</b>' : ""}</span>`;
       }).join("");
       return `
@@ -123,7 +134,7 @@
               </div>
               <div class="barra"><span style="width:${pct}%;background:${color};"></span></div>
               <span class="chip ${estado}" style="margin-top:6px;">${texto}</span>
-              <span style="font-size:12px;color:var(--text-muted);margin-left:6px;">${f.dias.length} día${f.dias.length === 1 ? "" : "s"} · ver detalle</span>
+              <span style="font-size:12px;color:var(--text-muted);margin-left:6px;">${f.dias.filter(d => !d.comp).length} día${f.dias.filter(d => !d.comp).length === 1 ? "" : "s"}${f.comp ? ` · ${textoHoras(f.comp)} compensadas` : ""} · ver detalle</span>
             </div>
             <span class="flecha" aria-hidden="true">›</span>
           </div>

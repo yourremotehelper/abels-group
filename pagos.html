@@ -67,6 +67,7 @@
     <p style="font-size:12px;color:var(--text-muted);margin:10px 0 0;">
       Se pagan las horas extra apuntadas en "Registro de asistencia", al precio de cada trabajador (se guarda para la próxima vez).
       Cada anticipo se resta una sola vez: en el primer recibí que se saque después de apuntarlo.
+      Las horas compensadas (apuntadas en el registro, p. ej. 2 h para una gestión) se restan de las horas extra de la misma forma.
     </p>
   </div>
 
@@ -183,7 +184,17 @@
   };
 
   function calcularFila(f) {
-    f.extra = r2(f.dias.reduce((s, d) => s + d.extra, 0));
+    f.extraBruto = r2(f.dias.reduce((s, d) => s + d.extra, 0));
+    // Horas compensadas: se restan por fecha mientras quepan en las extras del periodo; el resto queda para el próximo pago
+    let compAcum = 0;
+    f.compAplicadas = []; f.compAplazadas = [];
+    (f.comps || []).forEach(c => {
+      const hh = Number(c.horas) || 0;
+      if (c.descontadoEn || compAcum + hh <= f.extraBruto + 0.001) { f.compAplicadas.push(c); compAcum += hh; }
+      else f.compAplazadas.push(c);
+    });
+    f.horasComp = r2(compAcum);
+    f.extra = r2(Math.max(0, f.extraBruto - f.horasComp));   // horas extra que se pagan
     f.precio = precioExtra(f.id);
     f.dias.forEach(d => { d.importe = r2(d.extra * f.precio); });
     f.importe = r2(f.extra * f.precio);
@@ -211,7 +222,7 @@
 
     const porEmp = {};
     const filaDe = (id, nombre) => porEmp[id] ||= {
-      id, emp: empleados.find(e => e.id === id) || { id, nombre }, dias: [], anticipos: []
+      id, emp: empleados.find(e => e.id === id) || { id, nombre }, dias: [], anticipos: [], comps: []
     };
     snaps.forEach(({ o, s }) => s.forEach(d => {
       const x = d.data();
@@ -219,6 +230,16 @@
       if (x.presenciaConfirmada === false || extra <= 0) return;
       filaDe(x.empleadoId, x.empleadoNombre).dias.push({ fecha: x.fecha, obra: o.nombre, extra: r2(extra) });
     }));
+
+    // Horas compensadas: las pendientes hasta el final del periodo y las ya restadas en este mismo periodo
+    try {
+      const cSnap = await getDocs(collection(db, "compensaciones"));
+      cSnap.forEach(d => {
+        const c = { id: d.id, ...d.data() };
+        if (c.descontadoEn ? c.descontadoEn !== clavePeriodo : c.fecha > hasta) return;
+        filaDe(c.empleadoId, c.empleadoNombre).comps.push(c);
+      });
+    } catch (err) { console.error(err); }
 
     // Anticipos: los pendientes (sin descontar todavía) y los ya descontados en este mismo periodo
     try {
@@ -238,6 +259,7 @@
     filas.forEach(f => {
       f.dias.sort((a, b) => a.fecha.localeCompare(b.fecha));
       f.anticipos.sort((a, b) => a.fecha.localeCompare(b.fecha));
+      f.comps.sort((a, b) => a.fecha.localeCompare(b.fecha));
       f.sel = true;
       calcularFila(f);
     });
@@ -260,7 +282,7 @@
           ${f.emp.nombreReal && f.emp.nombreReal !== f.emp.nombre ? `<div style="font-size:12px;color:var(--text-muted);">${esc(f.emp.nombreReal)}</div>` : ""}
         </td>
         <td class="num">${f.dias.length}</td>
-        <td class="num">${h(f.extra)}</td>
+        <td class="num">${h(f.extra)}${f.horasComp ? `<br><span style="font-size:11px;color:var(--text-muted);white-space:nowrap;">${h(f.extraBruto)} − ${h(f.horasComp)} compensadas</span>` : ""}${f.compAplazadas.length ? `<br><span style="font-size:11px;color:var(--text-muted);white-space:nowrap;">${h(f.compAplazadas.reduce((s, c) => s + Number(c.horas || 0), 0))} h compensadas para el próximo pago</span>` : ""}</td>
         <td class="num"><input type="number" class="c-precio" min="0" step="0.5" value="${f.precio || ""}" placeholder="0" aria-label="Precio de la hora extra"></td>
         <td class="num importe">${f.extra && !f.precio ? '<span class="neg" style="font-weight:400;">falta precio</span>' : euros(f.importe)}</td>
         <td class="num">
@@ -277,7 +299,9 @@
           ${f.dias.length ? `<table>
             <tr><th>Fecha</th><th>Obra</th><th>Horas extra</th><th>Importe</th></tr>
             ${f.dias.map(d => `<tr><td class="d">${fechaBonita(d.fecha)}</td><td class="d">${esc(d.obra)}</td><td class="d">${h(d.extra)} h</td><td class="d">${euros(d.importe)}</td></tr>`).join("")}
+            ${f.compAplicadas.map(c => `<tr><td class="d">${fechaBonita(c.fecha)}</td><td class="d">Compensadas: ${esc(c.motivo || "")}</td><td class="d neg">−${h(c.horas)} h</td><td class="d neg">−${euros(r2((Number(c.horas) || 0) * f.precio))}</td></tr>`).join("")}
           </table>` : "Sin horas extra en este periodo."}
+          ${f.compAplazadas.length ? `<p style="margin:6px 0 0;">Para el próximo pago (no caben en las extras de este periodo): ${f.compAplazadas.map(c => `${fechaBonita(c.fecha)} −${h(c.horas)} h (${esc(c.motivo || "")})`).join(", ")}</p>` : ""}
         </td>
       </tr>
       <tr class="desglose ant-row" data-i="${i}" ${f.abierto ? "" : "hidden"}>
@@ -455,7 +479,8 @@
         startY: y + 4,
         margin: { left: M, right: M },
         head: [["Fecha", "Obra", "Horas extra", "Importe"]],
-        body: f.dias.map(d => [fechaBonita(d.fecha), d.obra, `${h(d.extra)} h`, euros(d.importe)]),
+        body: [...f.dias.map(d => [fechaBonita(d.fecha), d.obra, `${h(d.extra)} h`, euros(d.importe)]),
+          ...f.compAplicadas.map(c => [fechaBonita(c.fecha), `Horas compensadas: ${c.motivo || ""}`, `-${h(c.horas)} h`, "-" + euros(r2((Number(c.horas) || 0) * f.precio))])],
         styles: { fontSize: 9, cellPadding: 1.8 },
         headStyles: { fillColor: [216, 90, 48] },
         columnStyles: { 2: { halign: "right" }, 3: { halign: "right" } }
@@ -467,7 +492,11 @@
       startY: y + 6,
       margin: { left: W / 2 - 20, right: M },
       body: [
-        ["Horas extra", `${h(f.extra)} h`, euros(f.importe)],
+        ...(f.horasComp ? [
+          ["Horas extra realizadas", `${h(f.extraBruto)} h`, ""],
+          ["Horas compensadas", `-${h(f.horasComp)} h`, ""],
+          ["Horas extra a pagar", `${h(f.extra)} h`, euros(f.importe)]
+        ] : [["Horas extra", `${h(f.extra)} h`, euros(f.importe)]]),
         ...f.aplicados.map(a => [`Anticipo entregado el ${fechaBonita(a.fecha)}`, "", "-" + euros(a.importe)]),
         [{ content: f.totalAnticipos ? "TOTAL RECIBIDO EN ESTE PAGO" : "TOTAL RECIBIDO", styles: { fontStyle: "bold" } }, "",
           { content: euros(pago), styles: { fontStyle: "bold" } }]
@@ -496,6 +525,10 @@
 
   // Al sacar el recibí, los anticipos pendientes quedan marcados como descontados en este periodo
   async function marcarAnticipos(f) {
+    for (const c of f.compAplicadas.filter(c => !c.descontadoEn)) {
+      await updateDoc(doc(db, "compensaciones", c.id), { descontadoEn: clavePeriodo, descontadoFecha: fechaLocal() });
+      c.descontadoEn = clavePeriodo;
+    }
     const pendientes = f.aplicados.filter(a => !a.descontadoEn);
     for (const a of pendientes) {
       await updateDoc(doc(db, "adelantos", a.id), { descontadoEn: clavePeriodo, descontadoFecha: fechaLocal() });
@@ -576,30 +609,32 @@
 
     // Hoja 1: resumen por trabajador
     const ws = wb.addWorksheet("Resumen", { views: [{ state: "frozen", ySplit: 4 }] });
-    const tit = ["Trabajador", "DNI/NIE", "Días con extra", "Horas extra", "€/hora extra", "Importe horas extra", "Anticipos", "A pagar"];
+    const tit = ["Trabajador", "DNI/NIE", "Días con extra", "Horas extra", "Horas compensadas", "Horas a pagar", "€/hora extra", "Importe horas extra", "Anticipos", "A pagar"];
     cabeceraHoja(ws, "Resumen de pagos de horas extra", tit.length);
     filaTitulos(ws, 4, tit);
-    ws.columns = [{ width: 30 }, { width: 13 }, { width: 10 }, { width: 10 }, { width: 11 }, { width: 14 }, { width: 12 }, { width: 13 }];
+    ws.columns = [{ width: 30 }, { width: 13 }, { width: 10 }, { width: 10 }, { width: 13 }, { width: 10 }, { width: 11 }, { width: 14 }, { width: 12 }, { width: 13 }];
     const primera = 5;
     sel.forEach((f, i) => {
       const n = primera + i;
       const r = ws.getRow(n);
-      r.values = [nombreDocumento(f.emp), f.emp.dni || "", f.dias.length, f.extra, f.precio,
-        { formula: `D${n}*E${n}`, result: f.importe }, f.totalAnticipos, { formula: `F${n}-G${n}`, result: f.aPagar }];
-      r.getCell(4).numFmt = HORAS;
-      [5, 6, 7, 8].forEach(c => r.getCell(c).numFmt = EUR);
+      r.values = [nombreDocumento(f.emp), f.emp.dni || "", f.dias.length, f.extraBruto, f.horasComp,
+        { formula: `D${n}-E${n}`, result: f.extra }, f.precio,
+        { formula: `F${n}*G${n}`, result: f.importe }, f.totalAnticipos, { formula: `H${n}-I${n}`, result: f.aPagar }];
+      [4, 5, 6].forEach(c => r.getCell(c).numFmt = HORAS);
+      [7, 8, 9, 10].forEach(c => r.getCell(c).numFmt = EUR);
       r.eachCell(c => c.border = borde);
       if (i % 2) r.eachCell(c => c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFFAF8F5" } });
     });
     const ultima = primera + sel.length - 1;
     const t = ws.getRow(ultima + 1);
     t.getCell(1).value = "TOTAL";
-    const totales = { C: sel.reduce((s, f) => s + f.dias.length, 0), D: sel.reduce((s, f) => s + f.extra, 0),
-      F: sel.reduce((s, f) => s + f.importe, 0), G: sel.reduce((s, f) => s + f.totalAnticipos, 0), H: sel.reduce((s, f) => s + f.aPagar, 0) };
+    const totales = { C: sel.reduce((s, f) => s + f.dias.length, 0), D: sel.reduce((s, f) => s + f.extraBruto, 0),
+      E: sel.reduce((s, f) => s + f.horasComp, 0), F: sel.reduce((s, f) => s + f.extra, 0),
+      H: sel.reduce((s, f) => s + f.importe, 0), I: sel.reduce((s, f) => s + f.totalAnticipos, 0), J: sel.reduce((s, f) => s + f.aPagar, 0) };
     Object.entries(totales).forEach(([col, v]) => {
       const c = t.getCell(col);
       c.value = { formula: `SUM(${col}${primera}:${col}${ultima})`, result: r2(v) };
-      c.numFmt = col === "D" ? HORAS : col === "C" ? "0" : EUR;
+      c.numFmt = ["D", "E", "F"].includes(col) ? HORAS : col === "C" ? "0" : EUR;
     });
     t.eachCell({ includeEmpty: true }, c => {
       c.font = { bold: true };
@@ -615,14 +650,21 @@
     filaTitulos(wd, 4, titD);
     wd.columns = [{ width: 30 }, { width: 12 }, { width: 28 }, { width: 11 }, { width: 13 }];
     let n = 5;
-    sel.forEach(f => f.dias.forEach(d => {
-      const r = wd.getRow(n++);
-      r.values = [nombreDocumento(f.emp), fechaExcel(d.fecha), d.obra, d.extra, d.importe];
-      r.getCell(2).numFmt = "dd/mm/yyyy";
-      r.getCell(4).numFmt = HORAS;
-      r.getCell(5).numFmt = EUR;
-      r.eachCell(c => c.border = borde);
-    }));
+    sel.forEach(f => {
+      const filasD = [
+        ...f.dias.map(d => [nombreDocumento(f.emp), fechaExcel(d.fecha), d.obra, d.extra, d.importe]),
+        ...f.compAplicadas.map(c => [nombreDocumento(f.emp), fechaExcel(c.fecha), `Horas compensadas: ${c.motivo || ""}`, -(Number(c.horas) || 0), -r2((Number(c.horas) || 0) * f.precio)])
+      ].sort((a, b) => a[1] - b[1]);
+      filasD.forEach(v => {
+        const r = wd.getRow(n++);
+        r.values = v;
+        r.getCell(2).numFmt = "dd/mm/yyyy";
+        r.getCell(4).numFmt = HORAS;
+        r.getCell(5).numFmt = EUR;
+        if (v[3] < 0) r.eachCell(c => c.font = { color: { argb: "FFB3261E" } });
+        r.eachCell(c => c.border = borde);
+      });
+    });
     if (n > 5) wd.autoFilter = { from: { row: 4, column: 1 }, to: { row: n - 1, column: titD.length } };
 
     // Hoja 3: anticipos descontados

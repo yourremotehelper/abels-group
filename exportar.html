@@ -172,9 +172,21 @@
       return null;
     }
     filas.ausencias = ausencias;
+    // Horas compensadas (se restan de las extras)
+    let comps = [];
+    try {
+      const cSnap = await getDocs(query(collection(db, "compensaciones"), where("fecha", ">=", desde), where("fecha", "<=", hasta)));
+      comps = cSnap.docs.map(d => d.data())
+        .filter(c => !empId || c.empleadoId === empId)
+        .filter(c => !obraId || (empleados.find(e => e.id === c.empleadoId) || {}).obraAsignada === obraId)
+        .sort((a, b) => (a.empleadoNombre + a.fecha).localeCompare(b.empleadoNombre + b.fecha));
+    } catch (err) { console.error(err); }
+    filas.comps = comps;
     return filas;
   }
 
+  const cabeceraComp = ["Trabajador", "Fecha", "Horas compensadas", "Motivo", "Apuntada por", "Restada en recibí"];
+  const filaComp = c => [nombreReal(c.empleadoId, c.empleadoNombre), fechaBonita(c.fecha), Number(c.horas) || 0, c.motivo || "", c.creadoPorNombre || "", c.descontadoEn ? "Sí" : "No"];
   const cabeceraAus = ["Trabajador", "Motivo", "Justificada", "Desde", "Hasta", "Nota", "Apuntada por"];
   const filaAus = a => [
     nombreReal(a.empleadoId, a.empleadoNombre), TIPOS_AUSENCIA[a.tipo] || a.tipo, a.tipo === "injustificada" ? "No" : "Sí",
@@ -255,10 +267,17 @@
     const hojaAus = XLSX.utils.aoa_to_sheet([cabeceraAus, ...filas.ausencias.map(filaAus)]);
     hojaAus["!cols"] = [{ wch: 20 }, { wch: 24 }, { wch: 11 }, { wch: 11 }, { wch: 11 }, { wch: 30 }, { wch: 16 }];
     XLSX.utils.book_append_sheet(libro, hojaAus, "Ausencias");
+    const datosComp = [cabeceraComp, ...filas.comps.map(filaComp)];
+    if (filas.comps.length) {
+      const hojaComp = XLSX.utils.aoa_to_sheet(datosComp);
+      hojaComp["!cols"] = [{ wch: 20 }, { wch: 11 }, { wch: 10 }, { wch: 30 }, { wch: 16 }, { wch: 10 }];
+      XLSX.utils.book_append_sheet(libro, hojaComp, "Horas compensadas");
+    }
     const archivo = nombreArchivo("xlsx");
     vistaPrevia({
       titulo: "Excel de asistencia",
-      tablas: [{ nombre: "Fichajes", filas: datos }, { nombre: "Ausencias", filas: [cabeceraAus, ...filas.ausencias.map(filaAus)] }],
+      tablas: [{ nombre: "Fichajes", filas: datos }, { nombre: "Ausencias", filas: [cabeceraAus, ...filas.ausencias.map(filaAus)] },
+        ...(filas.comps.length ? [{ nombre: "Horas compensadas", filas: datosComp }] : [])],
       onDescargar: () => XLSX.writeFile(libro, archivo)
     });
   }));
@@ -285,6 +304,15 @@
       styles: { fontSize: 7.5, cellPadding: 1.5 },
       headStyles: { fillColor: [216, 90, 48] }
     });
+    if (filas.comps.length) {
+      pdf.autoTable({
+        startY: pdf.lastAutoTable.finalY + 8,
+        head: [cabeceraComp.slice(0, 5)],
+        body: filas.comps.map(c => filaComp(c).slice(0, 4).concat([c.creadoPorNombre || ""]).map((v, i) => i === 2 ? "-" + v + " h" : v)),
+        styles: { fontSize: 7.5, cellPadding: 1.5 },
+        headStyles: { fillColor: [47, 85, 151] }
+      });
+    }
     if (filas.ausencias.length) {
       pdf.autoTable({
         startY: pdf.lastAutoTable.finalY + 8,
