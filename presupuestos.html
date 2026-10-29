@@ -142,7 +142,8 @@
     if (p) { if (sinGuardar && !confirm("Hay cambios sin guardar. ¿Salir igualmente?")) return; abrirLista(); }
     else window.location.href = "dashboard.html";
   });
-  window.addEventListener("beforeunload", e => { if (p && sinGuardar) { e.preventDefault(); e.returnValue = ""; } });
+  window.hayCambiosSinGuardar = () => !!(p && sinGuardar);
+  window.addEventListener("beforeunload", e => { if (p && sinGuardar && !window.__actualizando) { e.preventDefault(); e.returnValue = ""; } });
 
   // ---------- Datos ----------
   async function cargarTodo() {
@@ -594,5 +595,6 @@
     if (x) abrirEditor(x); else pintarLista();
   });
 </script>
+<script type="module" src="js/actualizacion.js"></script>
 </body>
 </html>

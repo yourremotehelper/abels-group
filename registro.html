@@ -703,8 +703,9 @@
   document.getElementById("filtroEstado").addEventListener("change", pintar);
   document.getElementById("filtroObra").addEventListener("change", pintar);
 
+  window.hayCambiosSinGuardar = () => hayCambios();
   window.addEventListener("beforeunload", e => {
-    if (!saliendo && hayCambios()) { e.preventDefault(); e.returnValue = ""; }
+    if (!saliendo && hayCambios() && !window.__actualizando) { e.preventDefault(); e.returnValue = ""; }
   });
 
   requireAuth(async (user, p) => {
@@ -727,5 +728,6 @@
     }
   });
 </script>
+<script type="module" src="js/actualizacion.js"></script>
 </body>
 </html>

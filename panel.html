@@ -443,6 +443,7 @@
   }
 
   let sinGuardar = false;
+  window.hayCambiosSinGuardar = () => sinGuardar;
   function repintarConservando() {
     sinGuardar = true;
     const scroll = $("ficha").scrollTop;
@@ -541,5 +542,6 @@
     cargarTodo();
   });
 </script>
+<script type="module" src="js/actualizacion.js"></script>
 </body>
 </html>

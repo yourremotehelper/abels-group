@@ -465,6 +465,7 @@ export async function renderParte(container, obra, perfil) {
     } catch (e) { console.error(e); alert("No se ha podido borrar. Inténtalo otra vez."); }
   }
 
-  window.addEventListener("beforeunload", e => { if (sinGuardar && container.querySelector("#ptGuardar")) { e.preventDefault(); e.returnValue = ""; } });
+  window.hayCambiosSinGuardar = () => !!(sinGuardar && container.querySelector("#ptGuardar"));
+  window.addEventListener("beforeunload", e => { if (sinGuardar && container.querySelector("#ptGuardar") && !window.__actualizando) { e.preventDefault(); e.returnValue = ""; } });
   await cargar();
 }
