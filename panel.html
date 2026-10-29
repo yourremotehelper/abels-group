@@ -110,7 +110,7 @@
   <div class="topbar">
     <button class="icon-btn" id="backBtn" title="Volver" aria-label="Volver">&#8592;</button>
     <div class="topbar-info">
-      <p class="topbar-obra">Dirección</p>
+      <p class="topbar-obra">🏗️ Obras</p>
       <p class="topbar-title">📊 Panel de obras</p>
     </div>
     <div class="acciones-top">
@@ -118,6 +118,7 @@
       <button class="secondary" id="recargarBtn" title="Volver a cargar los datos">↻ <span class="txt">Actualizar</span></button>
     </div>
   </div>
+  <nav class="secciones" id="secciones"></nav>
 
   <div id="contenido"><div class="card"><div class="loading">Cargando todas las obras…</div></div></div>
 </div>
@@ -127,6 +128,8 @@
 
 <script type="module">
   import { requireAuth } from "./js/auth.js";
+  import { pintarSecciones } from "./js/menu.js";
+  pintarSecciones("obras", "panel");
   import { db } from "./js/firebase-config.js";
   import {
     collection, getDocs, doc, updateDoc, setDoc
@@ -529,6 +532,7 @@
   }
 
   requireAuth((user, perfil) => {
+    pintarSecciones("obras", "panel", perfil);
     if (!esAdmin(perfil)) {
       alert("El panel de obras es solo para dirección.");
       window.location.href = "dashboard.html";

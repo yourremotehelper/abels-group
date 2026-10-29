@@ -105,10 +105,11 @@
   <div class="topbar">
     <button class="icon-btn" id="backBtn" title="Volver" aria-label="Volver">&#8592;</button>
     <div class="topbar-info">
-      <p class="topbar-obra" id="topSub">Solo administración</p>
+      <p class="topbar-obra" id="topSub">🏗️ Obras</p>
       <p class="topbar-title" id="topTitulo">📄 Presupuestos</p>
     </div>
   </div>
+  <nav class="secciones" id="secciones"></nav>
   <div id="vista"><div class="loading">Cargando...</div></div>
 </div>
 
@@ -116,6 +117,8 @@
 
 <script type="module">
   import { requireAuth } from "./js/auth.js";
+  import { pintarSecciones } from "./js/menu.js";
+  pintarSecciones("obras", "presupuestos");
   import { db, auth } from "./js/firebase-config.js";
   import {
     collection, getDocs, getDoc, addDoc, setDoc, updateDoc, deleteDoc, doc, serverTimestamp
@@ -202,7 +205,7 @@
     p = null; sinGuardar = false;
     history.replaceState(null, "", "presupuestos.html");
     $("topTitulo").textContent = "📄 Presupuestos";
-    $("topSub").textContent = "Solo administración";
+    $("topSub").textContent = "🏗️ Obras";
     pintarLista();
   }
 
@@ -577,6 +580,7 @@
   }
 
   requireAuth(async (user, pf) => {
+    pintarSecciones("obras", "presupuestos", pf);
     if (!esAdmin(pf)) { alert("Los presupuestos son solo para administración."); window.location.href = "dashboard.html"; return; }
     perfil = pf;
     try { await cargarTodo(); }

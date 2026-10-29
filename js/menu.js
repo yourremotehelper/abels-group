@@ -1,8 +1,16 @@
-// Menús agrupados con iconos: RRHH (pantalla de ordenador) y Ajustes (cómodo en el móvil).
+// Menús agrupados con iconos: Obras y RRHH (pantalla de ordenador) y Ajustes (cómodo en el móvil).
 // Cada página pone <nav class="secciones" id="secciones"></nav> y llama a pintarSecciones().
 import { esAdmin, puedeGestionarFichajes } from "./registro.js";
 
 export const GRUPOS = {
+  obras: {
+    titulo: "🏗️ Obras",
+    secciones: [
+      { id: "panel", icono: "📊", nombre: "Panel de obras", url: "panel.html", soloAdmin: true },
+      { id: "presupuestos", icono: "📄", nombre: "Presupuestos", url: "presupuestos.html", soloAdmin: true },
+      { id: "partes", icono: "📋", nombre: "Partes diarios", url: "partes.html" }
+    ]
+  },
   rrhh: {
     titulo: "👥 RRHH",
     secciones: [

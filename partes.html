@@ -44,10 +44,11 @@
   <div class="topbar">
     <button class="icon-btn" id="backBtn" title="Volver" aria-label="Volver">&#8592;</button>
     <div class="topbar-info">
-      <p class="topbar-obra">Lo que se ha hecho en cada obra</p>
+      <p class="topbar-obra">🏗️ Obras</p>
       <p class="topbar-title">📋 Partes diarios</p>
     </div>
   </div>
+  <nav class="secciones" id="secciones"></nav>
 
   <div class="card">
     <div class="barra-dia">
@@ -86,6 +87,8 @@
 
 <script type="module">
   import { requireAuth } from "./js/auth.js";
+  import { pintarSecciones } from "./js/menu.js";
+  pintarSecciones("obras", "partes");
   import { db } from "./js/firebase-config.js";
   import { collection, getDocs } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
   import { collection as col, getDocs as gd, doc, deleteDoc, setDoc } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
@@ -258,6 +261,7 @@
   });
 
   requireAuth(async (user, perfil) => {
+    pintarSecciones("obras", "partes", perfil);
     if (!puedeGestionarFichajes(perfil)) { window.location.href = "dashboard.html"; return; }
     $("dia").value = fechaLocal();
     $("dia").max = fechaLocal();
