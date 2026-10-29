@@ -1,0 +1,594 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Abel's | Presupuestos</title>
+<link rel="manifest" href="manifest.json">
+<link rel="stylesheet" href="css/styles.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+<style>
+  .screen.ancha { max-width: 1240px; }
+  .num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .neg { color: var(--danger); }
+  .cab-lista { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 12px; }
+  .cab-lista input, .cab-lista select { margin: 0; width: auto; }
+  .cab-lista .primary { width: auto; padding: 0 18px; margin-left: auto; }
+  table.lista { width: 100%; border-collapse: collapse; font-size: 14px; }
+  table.lista th { text-align: left; font-size: 12px; color: var(--text-muted); font-weight: 600; padding: 8px; border-bottom: 1px solid var(--border); }
+  table.lista td { padding: 10px 8px; border-bottom: 1px solid var(--border); }
+  table.lista tr.p-fila { cursor: pointer; }
+  table.lista tr.p-fila:hover td { background: var(--bg); }
+  .chip.borrador { background: var(--border); color: var(--text-secondary); }
+  .chip.enviado { background: #E8EEF8; color: #2F5597; }
+  .chip.aceptado { background: var(--success-bg); color: var(--success-dark); }
+  .chip.rechazado { background: var(--danger-bg); color: var(--danger); }
+
+  /* Editor */
+  .ed { display: grid; grid-template-columns: 1fr 300px; gap: 14px; align-items: start; }
+  .ed > * { min-width: 0; }
+  .lateral { position: sticky; top: 12px; }
+  .datos { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 0 12px; }
+  .datos input { margin-bottom: 10px; }
+  .datos label { font-size: 12px; margin-bottom: 4px; }
+  .sub-t { font-size: 13px; font-weight: 600; color: var(--text-secondary); margin: 4px 0 8px; grid-column: 1 / -1; }
+  .cap { border: 1px solid var(--border); border-radius: 12px; margin-bottom: 14px; background: var(--surface); }
+  .cap-cab { display: flex; gap: 8px; align-items: center; padding: 10px 12px; border-bottom: 1px solid var(--border); background: #FBFAF8; border-radius: 12px 12px 0 0; }
+  .cap-cab .cap-n { font-weight: 700; color: var(--accent-dark); min-width: 22px; }
+  .cap-cab input { margin: 0; font-weight: 600; flex: 1; }
+  .cap-cab .tot { font-weight: 700; min-width: 110px; }
+  .cap-cab button { width: 34px; height: 34px; padding: 0; flex-shrink: 0; }
+  .partidas { width: 100%; border-collapse: collapse; }
+  .partidas th { font-size: 11px; color: var(--text-muted); font-weight: 600; text-align: left; padding: 6px 4px; }
+  .partidas th.num { text-align: right; }
+  .partidas td { padding: 4px; vertical-align: top; border-top: 1px solid #F0EDE8; }
+  .partidas input, .partidas select, .partidas textarea { margin: 0; height: 36px; font-size: 14px; padding: 6px 8px; }
+  .partidas textarea { height: auto; min-height: 36px; resize: vertical; width: 100%; font-family: inherit; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); color: var(--text); box-sizing: border-box; line-height: 1.35; }
+  .partidas .c-n { width: 34px; font-size: 12px; color: var(--text-muted); padding-top: 12px; }
+  .partidas .c-ud { width: 74px; }
+  .partidas .c-cant { width: 84px; }
+  .partidas .c-coste { width: 92px; }
+  .partidas .c-precio { width: 92px; }
+  .partidas .c-imp { width: 100px; padding-top: 12px; font-weight: 600; }
+  .partidas .c-mg { width: 58px; padding-top: 12px; font-size: 12px; }
+  .partidas .c-x { width: 30px; }
+  .partidas input[type=number] { text-align: right; }
+  .partidas .interno { background: #F6F3FA; }
+  .x-btn { border: none; background: none; color: var(--text-muted); font-size: 16px; cursor: pointer; padding: 8px 4px; }
+  .x-btn:hover { color: var(--danger); }
+  .cap-pie { padding: 8px 12px 12px; display: flex; gap: 14px; flex-wrap: wrap; }
+  .resumen-row { display: flex; justify-content: space-between; gap: 10px; font-size: 14px; padding: 4px 0; font-variant-numeric: tabular-nums; }
+  .resumen-row.total { font-size: 18px; font-weight: 700; border-top: 2px solid var(--text); margin-top: 6px; padding-top: 8px; }
+  .resumen-row select, .resumen-row input { width: auto; margin: 0; height: 34px; font-size: 14px; }
+  .resumen-row select { max-width: 175px; min-width: 0; }
+  .resumen-row > span:last-child, .resumen-row > b:last-child { white-space: nowrap; }
+  .ed { grid-template-columns: minmax(0, 1fr) 320px; }
+  .interno-box { background: #F6F3FA; border-radius: 10px; padding: 12px; margin-top: 12px; }
+  .interno-box h3 { font-size: 13px; margin: 0 0 6px; color: #5B3F8C; }
+  .acciones-lat { display: grid; gap: 8px; margin-top: 12px; }
+  .acciones-lat button { height: 42px; }
+  .estado-sel { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; margin-bottom: 10px; }
+  .estado-sel button { font: inherit; font-size: 12px; padding: 7px 2px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface); cursor: pointer; color: var(--text-secondary); }
+  .estado-sel button.on { font-weight: 700; color: var(--text); border-color: var(--text); }
+  .aviso-guardar { font-size: 12px; color: var(--accent-dark); text-align: center; min-height: 16px; margin: 6px 0 0; }
+  #sugBox { position: absolute; z-index: 50; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 6px 24px rgba(0,0,0,.14); max-width: 560px; overflow: hidden; }
+  #sugBox button { display: block; width: 100%; text-align: left; font: inherit; font-size: 13px; padding: 8px 12px; border: none; border-bottom: 1px solid var(--border); background: none; cursor: pointer; color: var(--text); }
+  #sugBox button:last-child { border-bottom: none; }
+  #sugBox button:hover, #sugBox button.on { background: var(--accent-bg); }
+  #sugBox small { color: var(--text-muted); margin-left: 6px; }
+  .pt-area { width: 100%; padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 14px; background: var(--bg); color: var(--text); resize: vertical; font-family: inherit; box-sizing: border-box; }
+
+  @media (max-width: 900px) {
+    .ed { grid-template-columns: 1fr; }
+    .lateral { position: static; }
+  }
+  /* Móvil: cada partida en bloque */
+  @media (max-width: 640px) {
+    .partidas thead { display: none; }
+    .partidas tr { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; padding: 8px 4px; border-top: 1px solid var(--border); }
+    .partidas td { border: none; padding: 0; width: auto !important; }
+    .partidas td.c-n { display: none; }
+    .partidas td.c-desc { grid-column: 1 / -1; }
+    .partidas td.c-imp, .partidas td.c-mg { padding-top: 8px; }
+    .partidas td.c-x { text-align: right; }
+    .partidas td[data-t]::before { content: attr(data-t); display: block; font-size: 10px; color: var(--text-muted); }
+    table.lista .opc { display: none; }
+    .cap-cab { flex-wrap: wrap; }
+    .cap-cab input { order: 5; flex: 1 1 100%; }
+    .cap-cab .tot { flex: 1; }
+  }
+</style>
+</head>
+<body>
+<div class="screen ancha">
+  <div class="topbar">
+    <button class="icon-btn" id="backBtn" title="Volver" aria-label="Volver">&#8592;</button>
+    <div class="topbar-info">
+      <p class="topbar-obra" id="topSub">Solo administración</p>
+      <p class="topbar-title" id="topTitulo">📄 Presupuestos</p>
+    </div>
+  </div>
+  <div id="vista"><div class="loading">Cargando...</div></div>
+</div>
+
+<div id="sugBox" hidden></div>
+
+<script type="module">
+  import { requireAuth } from "./js/auth.js";
+  import { db, auth } from "./js/firebase-config.js";
+  import {
+    collection, getDocs, getDoc, addDoc, setDoc, updateDoc, deleteDoc, doc, serverTimestamp
+  } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+  import { esAdmin, esc, euros, fechaLocal, horaLocal, fechaBonita } from "./js/registro.js";
+  import { vistaPrevia } from "./js/vista-previa.js";
+  import { pdfPresupuesto, calcularPresupuesto, UNIDADES, IVAS, ESTADOS } from "./js/presupuesto.js";
+
+  const $ = id => document.getElementById(id);
+  const vista = $("vista");
+  let perfil = null, todos = [], empresa = {}, p = null, sinGuardar = false;
+  const r2 = n => Math.round((Number(n) || 0) * 100) / 100;
+  const pct = n => (Math.round(n * 10) / 10).toString().replace(".", ",") + " %";
+
+  const CONDICIONES_BASE =
+    "Forma de pago: 40 % a la aceptación del presupuesto, 40 % a mitad de obra y 20 % al finalizar.\n" +
+    "No incluye trabajos ni materiales no descritos en este presupuesto. Cualquier modificación se presupuestará aparte.\n" +
+    "Licencias y tasas municipales no incluidas salvo que se indique.";
+
+  $("backBtn").addEventListener("click", () => {
+    if (p) { if (sinGuardar && !confirm("Hay cambios sin guardar. ¿Salir igualmente?")) return; abrirLista(); }
+    else window.location.href = "dashboard.html";
+  });
+  window.addEventListener("beforeunload", e => { if (p && sinGuardar) { e.preventDefault(); e.returnValue = ""; } });
+
+  // ---------- Datos ----------
+  async function cargarTodo() {
+    const [s, e] = await Promise.all([
+      getDocs(collection(db, "presupuestos")),
+      getDoc(doc(db, "tarifas", "_empresa")).catch(() => null)
+    ]);
+    todos = s.docs.map(d => ({ id: d.id, ...d.data() }));
+    empresa = e && e.exists() ? e.data() : {};
+    sugerencias();
+  }
+
+  // Partidas ya usadas en otros presupuestos: al escribir la descripción se proponen con su unidad, precio y coste
+  let mapaPartidas = new Map();
+  function sugerencias() {
+    mapaPartidas = new Map();
+    [...todos].sort((a, b) => (a.fecha || "").localeCompare(b.fecha || "")).forEach(x =>
+      (x.capitulos || []).forEach(c => (c.partidas || []).forEach(pa => {
+        const k = (pa.desc || "").trim();
+        if (k) mapaPartidas.set(k.toLowerCase(), { desc: k, ud: pa.ud, precio: pa.precio, coste: pa.coste });
+      })));
+  }
+
+  // Desplegable de sugerencias bajo la descripción de la partida
+  const sugBox = $("sugBox");
+  let sugCerrar = null;
+  function mostrarSugerencias(ta, alElegir) {
+    const t = ta.value.trim().toLowerCase();
+    const lista = t.length < 3 ? [] : [...mapaPartidas.values()].filter(v => v.desc.toLowerCase().includes(t) && v.desc.toLowerCase() !== t).slice(0, 6);
+    if (!lista.length) { sugBox.hidden = true; return; }
+    const rc = ta.getBoundingClientRect();
+    Object.assign(sugBox.style, { left: rc.left + window.scrollX + "px", top: rc.bottom + window.scrollY + 2 + "px", width: Math.max(rc.width, 320) + "px" });
+    sugBox.innerHTML = lista.map((v, i) => `<button type="button" data-i="${i}">${esc(v.desc)}<small>${esc(v.ud || "")}${Number(v.precio) ? " · " + euros(v.precio) : ""}</small></button>`).join("");
+    sugBox.hidden = false;
+    sugBox.querySelectorAll("button").forEach(b => b.addEventListener("mousedown", e => { e.preventDefault(); sugBox.hidden = true; alElegir(lista[Number(b.dataset.i)]); }));
+    clearTimeout(sugCerrar);
+  }
+  document.addEventListener("focusout", () => { sugCerrar = setTimeout(() => { sugBox.hidden = true; }, 150); });
+
+  function siguienteNumero() {
+    const anio = new Date().getFullYear();
+    const n = todos.map(x => String(x.numero || "")).filter(x => x.startsWith(anio + "-"))
+      .map(x => Number(x.split("-")[1]) || 0).reduce((m, v) => Math.max(m, v), 0);
+    return `${anio}-${String(n + 1).padStart(3, "0")}`;
+  }
+
+  function nuevo() {
+    return {
+      numero: siguienteNumero(), fecha: fechaLocal(), validez: 30, estado: "borrador",
+      cliente: { nombre: "", nif: "", direccion: "", telefono: "", email: "" },
+      obra: { nombre: "", direccion: "" },
+      iva: empresa.ivaPorDefecto ?? 21, descuento: 0,
+      capitulos: [{ nombre: "", partidas: [{ desc: "", ud: "m²", cant: 1, coste: "", precio: "" }] }],
+      condiciones: empresa.condicionesPorDefecto || CONDICIONES_BASE, notasInternas: ""
+    };
+  }
+
+  // ---------- Lista ----------
+  function abrirLista() {
+    p = null; sinGuardar = false;
+    history.replaceState(null, "", "presupuestos.html");
+    $("topTitulo").textContent = "📄 Presupuestos";
+    $("topSub").textContent = "Solo administración";
+    pintarLista();
+  }
+
+  function pintarLista() {
+    const fEstado = sessionStorage.getItem("presEstado") || "";
+    vista.innerHTML = `
+      <div class="card">
+        <div class="cab-lista">
+          <input type="search" id="busca" placeholder="Buscar cliente, obra o número..." style="min-width:240px;">
+          <select id="fEstado" class="campo"><option value="">Todos los estados</option>${Object.entries(ESTADOS).map(([k, v]) => `<option value="${k}" ${k === fEstado ? "selected" : ""}>${v}</option>`).join("")}</select>
+          <button class="primary" id="nuevoBtn">＋ Nuevo presupuesto</button>
+        </div>
+        <div style="overflow-x:auto;"><table class="lista" id="tabla"></table></div>
+      </div>
+      <details class="card" id="empresaCard">
+        <summary style="cursor:pointer;font-weight:600;">⚙️ Datos de la empresa y valores por defecto</summary>
+        <div class="datos" style="margin-top:12px;">
+          <div><label>Dirección (sale en el PDF)</label><input type="text" id="eDir" value="${esc(empresa.direccion || "")}"></div>
+          <div><label>Teléfono</label><input type="text" id="eTel" value="${esc(empresa.telefono || "")}"></div>
+          <div><label>Email</label><input type="text" id="eMail" value="${esc(empresa.email || "")}"></div>
+          <div><label>IVA por defecto</label><select id="eIva" class="campo">${IVAS.map(i => `<option value="${i.v}" ${Number(empresa.ivaPorDefecto ?? 21) === i.v ? "selected" : ""}>${i.t}</option>`).join("")}</select></div>
+          <div><label>Margen por defecto (%)</label><input type="number" id="eMargen" min="0" step="1" value="${esc(empresa.margenPorDefecto ?? 25)}"></div>
+        </div>
+        <label>Condiciones por defecto (forma de pago, qué no incluye...)</label>
+        <textarea class="pt-area" id="eCond" rows="4">${esc(empresa.condicionesPorDefecto || CONDICIONES_BASE)}</textarea>
+        <button class="secondary" id="eGuardar" style="margin-top:10px;width:auto;padding:0 18px;">Guardar datos</button>
+        <span id="eMsg" style="font-size:13px;margin-left:10px;"></span>
+      </details>`;
+    const pintarTabla = () => {
+      const t = $("busca").value.trim().toLowerCase(), est = $("fEstado").value;
+      const lista = todos
+        .filter(x => !est || x.estado === est)
+        .filter(x => !t || [x.numero, x.cliente?.nombre, x.obra?.nombre, x.obra?.direccion].join(" ").toLowerCase().includes(t))
+        .sort((a, b) => (b.fecha || "").localeCompare(a.fecha || "") || String(b.numero).localeCompare(String(a.numero)));
+      if (!lista.length) { $("tabla").innerHTML = `<tr><td><div class="placeholder">${todos.length ? "Ninguno coincide." : "Todavía no hay presupuestos. Pulsa «Nuevo presupuesto»."}</div></td></tr>`; return; }
+      $("tabla").innerHTML = `<tr><th>Nº</th><th>Fecha</th><th>Cliente</th><th class="opc">Obra</th><th class="num">Total</th><th class="num opc">Margen</th><th>Estado</th></tr>` +
+        lista.map(x => {
+          const c = calcularPresupuesto(x);
+          return `<tr class="p-fila" data-id="${x.id}">
+            <td><b>${esc(x.numero || "")}</b></td><td>${fechaBonita(x.fecha)}</td>
+            <td>${esc(x.cliente?.nombre || "—")}</td><td class="opc">${esc(x.obra?.nombre || "")}</td>
+            <td class="num">${euros(c.total)}</td>
+            <td class="num opc">${c.coste ? pct(c.margenPct) : "—"}</td>
+            <td><span class="chip ${x.estado}">${ESTADOS[x.estado] || x.estado}</span></td></tr>`;
+        }).join("");
+      document.querySelectorAll(".p-fila").forEach(tr => tr.addEventListener("click", () => abrirEditor(todos.find(x => x.id === tr.dataset.id))));
+    };
+    $("busca").addEventListener("input", pintarTabla);
+    $("fEstado").addEventListener("change", () => { sessionStorage.setItem("presEstado", $("fEstado").value); pintarTabla(); });
+    $("nuevoBtn").addEventListener("click", () => abrirEditor(nuevo()));
+    $("eGuardar").addEventListener("click", async () => {
+      empresa = { ...empresa, direccion: $("eDir").value.trim(), telefono: $("eTel").value.trim(), email: $("eMail").value.trim(),
+        ivaPorDefecto: Number($("eIva").value), margenPorDefecto: Number($("eMargen").value) || 0, condicionesPorDefecto: $("eCond").value.trim() };
+      try {
+        await setDoc(doc(db, "tarifas", "_empresa"), empresa, { merge: true });
+        $("eMsg").textContent = "✓ Guardado";
+      } catch (err) { console.error(err); $("eMsg").textContent = "No se ha podido guardar. ¿Están publicadas las reglas de Firebase?"; }
+    });
+    pintarTabla();
+  }
+
+  // ---------- Editor ----------
+  function abrirEditor(pres) {
+    p = JSON.parse(JSON.stringify(pres));
+    p.capitulos ||= [];
+    sinGuardar = !pres.id;
+    if (pres.id) history.replaceState(null, "", "presupuestos.html?id=" + pres.id);
+    pintarEditor();
+    window.scrollTo(0, 0);
+  }
+
+  const marcar = () => { sinGuardar = true; const a = $("avisoGuardar"); if (a) a.textContent = "Cambios sin guardar"; };
+
+  function pintarEditor() {
+    $("topTitulo").textContent = `📄 Presupuesto ${p.numero}`;
+    $("topSub").textContent = p.cliente.nombre || "Nuevo presupuesto";
+    const margenDef = Number(empresa.margenPorDefecto ?? 25);
+    vista.innerHTML = `
+      <div class="ed">
+        <div>
+          <div class="card">
+            <div class="datos">
+              <p class="sub-t">Cliente</p>
+              <div><label>Nombre o empresa</label><input type="text" data-k="cliente.nombre" value="${esc(p.cliente.nombre)}"></div>
+              <div><label>NIF / CIF</label><input type="text" data-k="cliente.nif" value="${esc(p.cliente.nif)}"></div>
+              <div><label>Teléfono</label><input type="text" data-k="cliente.telefono" value="${esc(p.cliente.telefono)}"></div>
+              <div><label>Email</label><input type="text" data-k="cliente.email" value="${esc(p.cliente.email)}"></div>
+              <div style="grid-column:1 / -1;"><label>Dirección del cliente</label><input type="text" data-k="cliente.direccion" value="${esc(p.cliente.direccion)}"></div>
+              <p class="sub-t">Obra</p>
+              <div><label>Nombre de la obra</label><input type="text" data-k="obra.nombre" value="${esc(p.obra.nombre)}" placeholder="Ej.: Reforma baño Son Rapinya"></div>
+              <div><label>Dirección de la obra</label><input type="text" data-k="obra.direccion" value="${esc(p.obra.direccion)}"></div>
+              <div><label>Fecha</label><input type="date" data-k="fecha" value="${esc(p.fecha)}"></div>
+              <div><label>Validez (días)</label><input type="number" data-k="validez" min="0" value="${esc(p.validez)}"></div>
+            </div>
+          </div>
+
+          <div id="caps"></div>
+          <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px;">
+            <button class="secondary" id="addCap" style="width:auto;padding:0 18px;">＋ Capítulo</button>
+            <button class="secondary" id="aplicarMargen" style="width:auto;padding:0 18px;">Poner precio con margen del <input type="number" id="margenVal" value="${margenDef}" min="0" step="1" style="width:56px;height:28px;margin:0 2px;padding:2px 4px;display:inline-block;" onclick="event.stopPropagation()"> % a las partidas con coste y sin precio</button>
+          </div>
+
+          <div class="card">
+            <label>Condiciones (salen en el PDF)</label>
+            <textarea class="pt-area" data-k="condiciones" rows="4">${esc(p.condiciones)}</textarea>
+            <label style="margin-top:12px;">Notas internas (no salen en el PDF)</label>
+            <textarea class="pt-area interno" data-k="notasInternas" rows="2" style="background:#F6F3FA;">${esc(p.notasInternas)}</textarea>
+          </div>
+        </div>
+
+        <div class="lateral">
+          <div class="card">
+            <div class="estado-sel">${Object.entries(ESTADOS).map(([k, v]) => `<button data-estado="${k}" class="${p.estado === k ? "on" : ""}">${v}</button>`).join("")}</div>
+            <div id="resumen"></div>
+            <div class="acciones-lat">
+              <button class="primary" id="guardarBtn">Guardar</button>
+              <button class="secondary" id="pdfBtn">👁️ Ver PDF para el cliente</button>
+              ${p.estado === "aceptado" && p.id ? (p.obraId ? `<button class="secondary" id="verObra">🏗️ Ver la obra en el Panel</button>` : `<button class="secondary" id="crearObra">🏗️ Crear la obra en el Panel</button>`) : ""}
+              ${p.id ? `<button class="link-btn" id="duplicar">duplicar presupuesto</button><button class="link-btn" id="borrar" style="color:var(--danger);">borrar presupuesto</button>` : ""}
+            </div>
+            <p class="aviso-guardar" id="avisoGuardar">${sinGuardar ? "Cambios sin guardar" : ""}</p>
+          </div>
+        </div>
+      </div>`;
+
+    pintarCapitulos();
+    pintarResumen();
+
+    vista.querySelectorAll("[data-k]").forEach(el => el.addEventListener("input", () => {
+      const [a, b] = el.dataset.k.split(".");
+      const v = el.type === "number" ? Number(el.value) || 0 : el.value;
+      if (b) p[a][b] = v; else p[a] = v;
+      if (el.dataset.k === "cliente.nombre") $("topSub").textContent = el.value || "Nuevo presupuesto";
+      marcar();
+    }));
+    vista.querySelectorAll("[data-estado]").forEach(b => b.addEventListener("click", () => {
+      p.estado = b.dataset.estado;
+      marcar();
+      guardar().then(() => pintarEditor());
+    }));
+    $("addCap").addEventListener("click", () => {
+      p.capitulos.push({ nombre: "", partidas: [{ desc: "", ud: "m²", cant: 1, coste: "", precio: "" }] });
+      marcar(); pintarCapitulos(); pintarResumen();
+      const ins = vista.querySelectorAll(".cap-cab input"); ins[ins.length - 1].focus();
+    });
+    $("aplicarMargen").addEventListener("click", () => {
+      const m = Number($("margenVal").value) || 0;
+      let n = 0;
+      p.capitulos.forEach(c => c.partidas.forEach(pa => {
+        if (Number(pa.coste) > 0 && !(Number(pa.precio) > 0)) { pa.precio = r2(Number(pa.coste) * (1 + m / 100)); n++; }
+      }));
+      if (!n) { alert("No hay partidas con coste y sin precio."); return; }
+      marcar(); pintarCapitulos(); pintarResumen();
+    });
+    $("guardarBtn").addEventListener("click", () => guardar());
+    $("pdfBtn").addEventListener("click", verPDF);
+    if ($("crearObra")) $("crearObra").addEventListener("click", crearObra);
+    if ($("verObra")) $("verObra").addEventListener("click", () => window.location.href = "panel.html");
+    if ($("duplicar")) $("duplicar").addEventListener("click", () => {
+      if (sinGuardar && !confirm("Hay cambios sin guardar en este presupuesto. ¿Duplicar igualmente (sin guardarlos)?")) return;
+      const copia = JSON.parse(JSON.stringify(p));
+      delete copia.id; delete copia.obraId;
+      Object.assign(copia, { numero: siguienteNumero(), fecha: fechaLocal(), estado: "borrador" });
+      abrirEditor(copia);
+    });
+    if ($("borrar")) $("borrar").addEventListener("click", async () => {
+      if (!confirm(`¿Borrar el presupuesto ${p.numero}${p.cliente.nombre ? " de " + p.cliente.nombre : ""}? No se puede deshacer.`)) return;
+      try {
+        await deleteDoc(doc(db, "presupuestos", p.id));
+        todos = todos.filter(x => x.id !== p.id);
+        sinGuardar = false; abrirLista();
+      } catch (err) { console.error(err); alert("No se ha podido borrar."); }
+    });
+  }
+
+  function pintarCapitulos() {
+    const caps = $("caps");
+    caps.innerHTML = p.capitulos.map((c, ci) => {
+      const tc = c.partidas.reduce((s, pa) => s + (Number(pa.cant) || 0) * (Number(pa.precio) || 0), 0);
+      return `<div class="cap" data-ci="${ci}">
+        <div class="cap-cab">
+          <span class="cap-n">${ci + 1}</span>
+          <input type="text" class="cap-nombre" value="${esc(c.nombre)}" placeholder="Nombre del capítulo (ej.: Demoliciones)" aria-label="Capítulo">
+          <span class="tot num" data-tot="${ci}">${euros(tc)}</span>
+          <button class="secondary cap-sub" title="Subir" aria-label="Subir capítulo" ${ci === 0 ? "disabled" : ""}>↑</button>
+          <button class="secondary cap-baj" title="Bajar" aria-label="Bajar capítulo" ${ci === p.capitulos.length - 1 ? "disabled" : ""}>↓</button>
+          <button class="secondary cap-del" title="Quitar capítulo" aria-label="Quitar capítulo" style="color:var(--danger);">✕</button>
+        </div>
+        <table class="partidas">
+          <thead><tr><th></th><th>Descripción</th><th>Ud</th><th class="num">Cantidad</th><th class="num" style="color:#5B3F8C;">Coste/ud</th><th class="num">Precio/ud</th><th class="num">Importe</th><th class="num" style="color:#5B3F8C;">Margen</th><th></th></tr></thead>
+          <tbody>${c.partidas.map((pa, pi) => filaPartida(ci, pi, pa)).join("")}</tbody>
+        </table>
+        <div class="cap-pie"><button class="link-btn add-par">＋ partida</button></div>
+      </div>`;
+    }).join("") || '<div class="card"><div class="placeholder">Sin capítulos. Pulsa «＋ Capítulo».</div></div>';
+
+    caps.querySelectorAll(".cap").forEach(div => {
+      const ci = Number(div.dataset.ci), c = p.capitulos[ci];
+      div.querySelector(".cap-nombre").addEventListener("input", e => { c.nombre = e.target.value; marcar(); });
+      div.querySelector(".cap-sub").addEventListener("click", () => mover(ci, -1));
+      div.querySelector(".cap-baj").addEventListener("click", () => mover(ci, 1));
+      div.querySelector(".cap-del").addEventListener("click", () => {
+        if (c.partidas.some(pa => pa.desc || Number(pa.precio)) && !confirm(`¿Quitar el capítulo «${c.nombre || ci + 1}» con sus ${c.partidas.length} partida(s)?`)) return;
+        p.capitulos.splice(ci, 1); marcar(); pintarCapitulos(); pintarResumen();
+      });
+      div.querySelector(".add-par").addEventListener("click", () => {
+        const ult = c.partidas[c.partidas.length - 1];
+        c.partidas.push({ desc: "", ud: ult ? ult.ud : "m²", cant: 1, coste: "", precio: "" });
+        marcar(); pintarCapitulos(); pintarResumen();
+        const filas = vista.querySelectorAll(`.cap[data-ci="${ci}"] textarea`); filas[filas.length - 1].focus();
+      });
+      div.querySelectorAll("tr[data-pi]").forEach(tr => {
+        const pi = Number(tr.dataset.pi), pa = c.partidas[pi];
+        const recalc = () => {
+          const imp = (Number(pa.cant) || 0) * (Number(pa.precio) || 0);
+          tr.querySelector(".c-imp").textContent = euros(imp);
+          tr.querySelector(".c-mg").innerHTML = margenTxt(pa);
+          const tc = c.partidas.reduce((s, x) => s + (Number(x.cant) || 0) * (Number(x.precio) || 0), 0);
+          div.querySelector(`[data-tot="${ci}"]`).textContent = euros(tc);
+          pintarResumen(); marcar();
+        };
+        const ta = tr.querySelector("textarea");
+        const ajustar = () => { ta.style.height = "auto"; ta.style.height = ta.scrollHeight + 2 + "px"; };
+        ajustar();
+        // Sugerencias de partidas ya usadas: al elegir una se copian descripción, unidad, coste y precio
+        const elegir = s => {
+          pa.desc = s.desc;
+          if (s.ud) pa.ud = s.ud;
+          if (Number(s.precio) > 0) pa.precio = s.precio;
+          if (Number(s.coste) > 0) pa.coste = s.coste;
+          marcar(); pintarCapitulos(); pintarResumen();
+        };
+        ta.addEventListener("input", () => { pa.desc = ta.value; ajustar(); marcar(); mostrarSugerencias(ta, elegir); });
+        tr.querySelector(".i-ud").addEventListener("change", e => { pa.ud = e.target.value; marcar(); });
+        [["i-cant", "cant"], ["i-coste", "coste"], ["i-precio", "precio"]].forEach(([cl, k]) =>
+          tr.querySelector("." + cl).addEventListener("input", e => { pa[k] = e.target.value === "" ? "" : Number(e.target.value); recalc(); }));
+        tr.querySelector(".x-btn").addEventListener("click", () => {
+          c.partidas.splice(pi, 1); marcar(); pintarCapitulos(); pintarResumen();
+        });
+      });
+    });
+  }
+
+  function margenTxt(pa) {
+    const pr = Number(pa.precio) || 0, co = Number(pa.coste) || 0;
+    if (!pr || !co) return "";
+    const m = (pr - co) / pr * 100;
+    return `<span style="color:${m < 0 ? "var(--danger)" : m < 10 ? "var(--accent-dark)" : "#5B3F8C"};">${Math.round(m)} %</span>`;
+  }
+
+  function filaPartida(ci, pi, pa) {
+    const imp = (Number(pa.cant) || 0) * (Number(pa.precio) || 0);
+    return `<tr data-pi="${pi}">
+      <td class="c-n">${ci + 1}.${pi + 1}</td>
+      <td class="c-desc"><textarea rows="1" placeholder="Descripción de la partida" aria-label="Descripción">${esc(pa.desc)}</textarea></td>
+      <td class="c-ud" data-t="Ud"><select class="campo i-ud" aria-label="Unidad">${UNIDADES.map(u => `<option ${u === pa.ud ? "selected" : ""}>${u}</option>`).join("")}</select></td>
+      <td class="c-cant" data-t="Cantidad"><input type="number" class="i-cant" step="any" min="0" value="${pa.cant ?? ""}" aria-label="Cantidad"></td>
+      <td class="c-coste" data-t="Coste/ud (interno)"><input type="number" class="i-coste interno" step="any" min="0" value="${pa.coste ?? ""}" placeholder="—" aria-label="Coste por unidad"></td>
+      <td class="c-precio" data-t="Precio/ud"><input type="number" class="i-precio" step="any" min="0" value="${pa.precio ?? ""}" aria-label="Precio por unidad"></td>
+      <td class="c-imp num" data-t="Importe">${euros(imp)}</td>
+      <td class="c-mg num" data-t="Margen">${margenTxt(pa)}</td>
+      <td class="c-x"><button class="x-btn" title="Quitar partida" aria-label="Quitar partida">✕</button></td>
+    </tr>`;
+  }
+
+  function mover(ci, d) {
+    const j = ci + d;
+    if (j < 0 || j >= p.capitulos.length) return;
+    [p.capitulos[ci], p.capitulos[j]] = [p.capitulos[j], p.capitulos[ci]];
+    marcar(); pintarCapitulos();
+  }
+
+  function pintarResumen() {
+    const c = calcularPresupuesto(p);
+    $("resumen").innerHTML = `
+      ${c.porCapitulo.map((x, i) => `<div class="resumen-row" style="font-size:13px;color:var(--text-secondary);"><span>${i + 1}. ${esc(x.nombre || "Sin nombre")}</span><span>${euros(x.total)}</span></div>`).join("")}
+      <div class="resumen-row" style="border-top:1px solid var(--border);margin-top:6px;padding-top:8px;"><span>Suma</span><b>${euros(c.suma)}</b></div>
+      <div class="resumen-row"><span>Descuento <input type="number" id="descIn" min="0" max="100" step="0.5" value="${p.descuento || 0}" style="width:64px;"> %</span><span class="${c.descuento ? "neg" : ""}">${c.descuento ? "-" + euros(c.descuento) : "—"}</span></div>
+      <div class="resumen-row"><span>Base imponible</span><b>${euros(c.base)}</b></div>
+      <div class="resumen-row"><select id="ivaSel" class="campo" aria-label="IVA">${IVAS.map(i => `<option value="${i.v}" ${Number(p.iva) === i.v ? "selected" : ""}>${i.t}</option>`).join("")}</select><span>${euros(c.iva)}</span></div>
+      <div class="resumen-row total"><span>TOTAL</span><span>${euros(c.total)}</span></div>
+      <div class="interno-box">
+        <h3>🔒 Solo para ti (no sale en el PDF)</h3>
+        <div class="resumen-row"><span>Coste previsto</span><span>${c.coste ? euros(c.coste) : "—"}</span></div>
+        <div class="resumen-row"><span>Beneficio</span><b class="${c.beneficio < 0 ? "neg" : ""}">${c.coste ? euros(c.beneficio) : "—"}</b></div>
+        <div class="resumen-row"><span>Margen sobre venta</span><b>${c.coste ? pct(c.margenPct) : "—"}</b></div>
+        ${c.sinCoste ? `<p style="font-size:12px;color:var(--text-muted);margin:6px 0 0;">${c.sinCoste} partida(s) sin coste: el margen no es exacto.</p>` : ""}
+      </div>`;
+    $("descIn").addEventListener("change", e => { p.descuento = Math.min(100, Math.max(0, Number(e.target.value) || 0)); marcar(); pintarResumen(); });
+    $("ivaSel").addEventListener("change", e => { p.iva = Number(e.target.value); marcar(); pintarResumen(); });
+  }
+
+  // Quita filas vacías y deja números limpios antes de guardar
+  function limpio() {
+    const capitulos = p.capitulos.map(c => ({
+      nombre: (c.nombre || "").trim(),
+      partidas: c.partidas.filter(pa => (pa.desc || "").trim() || Number(pa.precio) || Number(pa.coste))
+        .map(pa => ({ desc: (pa.desc || "").trim(), ud: pa.ud || "ud", cant: Number(pa.cant) || 0,
+          coste: pa.coste === "" || pa.coste === null || pa.coste === undefined ? "" : Number(pa.coste) || 0,
+          precio: Number(pa.precio) || 0 }))
+    })).filter(c => c.nombre || c.partidas.length);
+    const { id, ...resto } = p;
+    const c = calcularPresupuesto({ ...resto, capitulos });
+    return { ...resto, capitulos, totales: { base: c.base, iva: c.iva, total: c.total, coste: c.coste },
+      actualizadoEn: `${fechaLocal()} ${horaLocal()}`, actualizadoPor: perfil.nombre || "" };
+  }
+
+  async function guardar() {
+    const btn = $("guardarBtn");
+    if (btn) { btn.disabled = true; btn.textContent = "Guardando..."; }
+    try {
+      const datos = limpio();
+      if (p.id) await setDoc(doc(db, "presupuestos", p.id), datos);
+      else {
+        const ref = await addDoc(collection(db, "presupuestos"), { ...datos, creadoEn: `${fechaLocal()} ${horaLocal()}`, creadoPor: perfil.nombre || "", registradoEn: serverTimestamp() });
+        p.id = ref.id;
+        history.replaceState(null, "", "presupuestos.html?id=" + p.id);
+      }
+      const i = todos.findIndex(x => x.id === p.id);
+      const guardado = { id: p.id, ...datos };
+      if (i >= 0) todos[i] = guardado; else todos.push(guardado);
+      sugerencias();
+      sinGuardar = false;
+      if ($("avisoGuardar")) $("avisoGuardar").textContent = "✓ Guardado";
+      return true;
+    } catch (err) {
+      console.error(err);
+      alert("No se ha podido guardar. Revisa la conexión y que estén publicadas las reglas de Firebase.");
+      return false;
+    } finally {
+      if (btn) { btn.disabled = false; btn.textContent = "Guardar"; }
+    }
+  }
+
+  function verPDF() {
+    const datos = { ...limpio(), id: p.id };
+    if (!datos.capitulos.length) { alert("El presupuesto no tiene partidas."); return; }
+    const pdf = pdfPresupuesto(datos, empresa);
+    const archivo = `presupuesto_${p.numero}_${(p.cliente.nombre || "cliente").trim()}.pdf`.replace(/[\s/\\]+/g, "_");
+    vistaPrevia({
+      titulo: `Presupuesto ${p.numero}`, documentos: [{ nombre: p.numero, pdf }],
+      nota: "Así lo verá el cliente: sin costes ni márgenes.",
+      onDescargar: async () => {
+        pdf.save(archivo);
+        // Al descargarlo, si era borrador pasa a «Enviado»
+        if (p.estado === "borrador") { p.estado = "enviado"; await guardar(); pintarEditor(); }
+      }
+    });
+  }
+
+  async function crearObra() {
+    if (sinGuardar && !(await guardar())) return;
+    const c = calcularPresupuesto(p);
+    const nombre = p.obra.nombre || p.cliente.nombre || `Presupuesto ${p.numero}`;
+    if (!confirm(`Se creará la obra «${nombre}» en el Panel de obras con:\n\n• Venta: ${euros(c.base)} (sin IVA)\n• Coste previsto: ${c.coste ? euros(c.coste) : "sin coste"}\n• ${p.capitulos.length} fase(s): ${p.capitulos.map(x => x.nombre).filter(Boolean).join(", ")}\n\n¿Crearla?`)) return;
+    try {
+      const ref = await addDoc(collection(db, "obras"), {
+        nombre, direccion: p.obra.direccion || "", presupuestoId: p.id,
+        gestion: {
+          estado: "porEmpezar", cliente: p.cliente.nombre || "", telefono: p.cliente.telefono || "",
+          fechaInicio: "", fechaFinPrevista: "", fechaFinReal: "",
+          venta: c.base, costePrevisto: c.coste || "", avanceManual: "",
+          fases: p.capitulos.filter(x => x.nombre).map(x => ({ nombre: x.nombre, avance: 0 })),
+          cobros: [], notas: `Creada desde el presupuesto ${p.numero}.`, actualizado: fechaLocal()
+        }
+      });
+      p.obraId = ref.id;
+      await guardar();
+      pintarEditor();
+      alert(`Obra «${nombre}» creada. La verás en el inicio y en el Panel de obras.`);
+    } catch (err) { console.error(err); alert("No se ha podido crear la obra."); }
+  }
+
+  requireAuth(async (user, pf) => {
+    if (!esAdmin(pf)) { alert("Los presupuestos son solo para administración."); window.location.href = "dashboard.html"; return; }
+    perfil = pf;
+    try { await cargarTodo(); }
+    catch (err) {
+      console.error(err);
+      vista.innerHTML = '<div class="card"><div class="placeholder">No se han podido cargar los presupuestos. Si es la primera vez, publica las reglas nuevas de Firebase.</div></div>';
+      return;
+    }
+    const id = new URLSearchParams(location.search).get("id");
+    const x = id && todos.find(t => t.id === id);
+    if (x) abrirEditor(x); else pintarLista();
+  });
+</script>
+</body>
+</html>

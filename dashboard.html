@@ -82,6 +82,7 @@
     }
     if (esAdmin(perfil)) {
       bloque("📊", "Panel de obras", "Avance, plazos, costes, cobros y avisos de todas las obras", "panel.html", true);
+      bloque("📄", "Presupuestos", "Capítulos y partidas, margen y PDF para el cliente", "presupuestos.html");
     }
     if (puedeGestionarFichajes(perfil)) {
       bloque("📝", "Registro de asistencia", "Apuntar horas, horas extra y faltas", "registro.html", !esAdmin(perfil));
